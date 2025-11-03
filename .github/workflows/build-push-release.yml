@@ -65,32 +65,58 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ ubuntu-latest, ubuntu-24.04-arm ]
         include:
+          # kthena-router
           - service: kthena-router
             context: .
             dockerfile: ./docker/Dockerfile.kthena-router
+            os: ubuntu-latest
+            platform: linux/amd64
+          - service: kthena-router
+            context: .
+            dockerfile: ./docker/Dockerfile.kthena-router
+            os: ubuntu-24.04-arm
+            platform: linux/arm64
+          # kthena-controller-manager
           - service: kthena-controller-manager
             context: .
             dockerfile: ./docker/Dockerfile.kthena-controller-manager
+            os: ubuntu-latest
+            platform: linux/amd64
+          - service: kthena-controller-manager
+            context: .
+            dockerfile: ./docker/Dockerfile.kthena-controller-manager
+            os: ubuntu-24.04-arm
+            platform: linux/arm64
+          # downloader
           - service: downloader
             context: ./python
+            dockerfile: ./python/Dockerfile
             target: downloader
+            os: ubuntu-latest
+            platform: linux/amd64
+          - service: downloader
+            context: ./python
+            dockerfile: ./python/Dockerfile
+            target: downloader
+            os: ubuntu-24.04-arm
+            platform: linux/arm64
+          # runtime
           - service: runtime
             context: ./python
+            dockerfile: ./python/Dockerfile
             target: runtime
+            os: ubuntu-latest
+            platform: linux/amd64
+          - service: runtime
+            context: ./python
+            dockerfile: ./python/Dockerfile
+            target: runtime
+            os: ubuntu-24.04-arm
+            platform: linux/arm64
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Set Platforms
-        id: platforms
-        run: |
-          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
-            echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-          else
-            echo "platforms=linux/arm64" >> $GITHUB_OUTPUT
-          fi
 
       - name: Docker Image Metadata
         id: meta
@@ -111,7 +137,7 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           target: ${{ matrix.target }}
-          platforms: ${{ steps.platforms.outputs.platforms }}
+          platforms: ${{ matrix.platform }}
           tags: ${{ steps.meta.outputs.tags }}
           annotations: ${{ steps.meta.outputs.annotations }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
@@ -125,7 +151,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ matrix.service }}-${{ matrix.os }}
+          name: digests-${{ matrix.service }}-${{ matrix.platform }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
