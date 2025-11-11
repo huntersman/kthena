@@ -86,6 +86,7 @@ func main() {
 	if enableWebhook {
 		go func() {
 			if err := setupWebhook(ctx, wc); err != nil {
+				klog.Errorf("Failed to setup webhook: %v", err)
 				os.Exit(1)
 			}
 		}()
@@ -134,25 +135,25 @@ func ensureWebhookCertificate(ctx context.Context, kubeClient kubernetes.Interfa
 func setupWebhook(ctx context.Context, wc webhookConfig) error {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
-		klog.Fatalf("build client config: %v", err)
+		klog.Errorf("build client config: %v", err)
 		return err
 	}
 
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
-		klog.Fatalf("failed to create kubeClient: %v", err)
+		klog.Errorf("failed to create kubeClient: %v", err)
 		return err
 	}
 
 	kthenaClient, err := clientset.NewForConfig(cfg)
 	if err != nil {
-		klog.Fatalf("failed to create kthenaClient: %v", err)
+		klog.Errorf("failed to create kthenaClient: %v", err)
 		return err
 	}
 
 	// Auto-generate certificate if enabled
 	if err := ensureWebhookCertificate(ctx, kubeClient, wc); err != nil {
-		klog.Fatalf("failed to ensure certificate: %v", err)
+		klog.Errorf("failed to ensure certificate: %v", err)
 		return err
 	}
 
