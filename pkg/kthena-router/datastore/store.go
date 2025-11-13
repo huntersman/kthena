@@ -243,11 +243,11 @@ type store struct {
 
 	// Gateway fields (using standard Gateway API)
 	gatewayMutex sync.RWMutex
-	gateways     map[string]interface{} // key: namespace/name, value: *gatewayv1.Gateway
+	gateways     map[string]*gatewayv1.Gateway // key: namespace/name, value: *gatewayv1.Gateway
 
 	// GatewayClass fields (using standard Gateway API)
 	gatewayClassMutex sync.RWMutex
-	gatewayClasses    map[string]interface{} // key: name (cluster-scoped), value: *gatewayv1.GatewayClass
+	gatewayClasses    map[string]*gatewayv1.GatewayClass // key: name (cluster-scoped), value: *gatewayv1.GatewayClass
 
 	// New fields for callback management
 	callbacks map[string][]CallbackFunc
@@ -266,8 +266,8 @@ func New() Store {
 		routeInfo:           make(map[string]*modelRouteInfo),
 		routes:              make(map[string]*aiv1alpha1.ModelRoute),
 		loraRoutes:          make(map[string]*aiv1alpha1.ModelRoute),
-		gateways:            make(map[string]*aiv1alpha1.Gateway),
-		gatewayClasses:      make(map[string]*aiv1alpha1.GatewayClass),
+		gateways:            make(map[string]*gatewayv1.Gateway),
+		gatewayClasses:      make(map[string]*gatewayv1.GatewayClass),
 		callbacks:           make(map[string][]CallbackFunc),
 		initialSynced:       &atomic.Bool{},
 		requestWaitingQueue: sync.Map{},
@@ -666,15 +666,10 @@ func (s *store) matchesParentRefs(mr *aiv1alpha1.ModelRoute) bool {
 		key := fmt.Sprintf("%s/%s", namespace, name)
 		gatewayObj := s.gateways[key]
 		if gatewayObj != nil {
-			gateway, ok := gatewayObj.(*gatewayv1.Gateway)
-			if !ok {
-				continue
-			}
-
 			// If sectionName is specified, check if the listener exists
 			if parentRef.SectionName != nil {
 				sectionName := string(*parentRef.SectionName)
-				for _, listener := range gateway.Spec.Listeners {
+				for _, listener := range gatewayObj.Spec.Listeners {
 					if string(listener.Name) == sectionName {
 						return true
 					}
@@ -1109,26 +1104,50 @@ func (s *store) GetModelRoute(namespacedName string) *aiv1alpha1.ModelRoute {
 // Gateway methods (using standard Gateway API)
 
 func (s *store) AddOrUpdateGateway(gateway interface{}) error {
-	s.gatewayMutex.Lock()
-	defer s.gatewayMutex.Unlock()
-
 	gw, ok := gateway.(*gatewayv1.Gateway)
 	if !ok {
 		return fmt.Errorf("invalid gateway type: %T", gateway)
 	}
 
 	key := fmt.Sprintf("%s/%s", gw.Namespace, gw.Name)
+
+	s.gatewayMutex.Lock()
 	s.gateways[key] = gw
+	s.gatewayMutex.Unlock()
+
 	klog.V(4).Infof("Added or updated Gateway: %s", key)
+
+	// Trigger callback outside the lock to avoid potential deadlocks
+	s.triggerCallbacks("Gateway", EventData{
+		EventType: EventAdd,
+		Pod:       types.NamespacedName{Namespace: gw.Namespace, Name: gw.Name},
+	})
+
 	return nil
 }
 
 func (s *store) DeleteGateway(key string) error {
-	s.gatewayMutex.Lock()
-	defer s.gatewayMutex.Unlock()
+	// Extract namespace and name before deletion
+	parts := strings.Split(key, "/")
+	var namespace, name string
+	if len(parts) == 2 {
+		namespace, name = parts[0], parts[1]
+	}
 
+	s.gatewayMutex.Lock()
 	delete(s.gateways, key)
+	s.gatewayMutex.Unlock()
+
 	klog.V(4).Infof("Deleted Gateway: %s", key)
+
+	// Trigger callback outside the lock to avoid potential deadlocks
+	if namespace != "" && name != "" {
+		s.triggerCallbacks("Gateway", EventData{
+			EventType: EventDelete,
+			Pod:       types.NamespacedName{Namespace: namespace, Name: name},
+		})
+	}
+
 	return nil
 }
 
