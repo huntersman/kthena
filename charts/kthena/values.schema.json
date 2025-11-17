@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "certManagementMode": {
+          "type": "string",
+          "enum": ["auto", "cert-manager", "manual"],
+          "description": "Certificate Management Mode: Three mutually exclusive options for managing TLS certificates:\n- auto: Webhook servers generate self-signed certificates automatically (default)\n- cert-manager: Use cert-manager to generate and manage certificates (requires cert-manager installation)\n- manual: Provide your own certificates via caBundle"
+        },
+        "webhook": {
+          "type": "object",
+          "properties": {
+            "caBundle": {
+              "type": "string",
+              "description": "Base64-encoded CA bundle for webhook server certificates. This is ONLY required when certManagementMode is set to 'manual'."
+            }
+          }
+        }
+      },
+      "required": ["certManagementMode"]
+    }
+  }
+}
