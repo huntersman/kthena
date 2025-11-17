@@ -1,4 +1,4 @@
-{{- if and .Values.controllerManager.webhook.enabled  .Values.global.certManager.enabled }}
+{{- if and .Values.controllerManager.webhook.enabled (eq .Values.global.certManagementMode "cert-manager") }}
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
