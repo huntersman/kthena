@@ -6,7 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/component: webhook
     {{- include "kthena.labels" . | nindent 4 }}
-  {{- if or (eq .Values.global.certManagementMode "auto") (eq .Values.global.certManagementMode "cert-manager") }}
+  {{- if eq .Values.global.certManagementMode "cert-manager" }}
   annotations:
     cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/kthena-webhook-cert
   {{- end }}
