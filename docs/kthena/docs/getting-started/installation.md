@@ -10,11 +10,14 @@ This guide will help you install Kthena on your Kubernetes cluster.
 
 Before installing Kthena, ensure you have the following:
 
+### Required Prerequisites
 -   **Kubernetes cluster** (version 1.20 or later)
 -   **kubectl** configured to access your cluster
 -   **Helm** (version 3.0 or later)
--   **[cert-manager](https://cert-manager.io/docs/installation/)** (see the [Certificate Management](#certificate-management) section for more details.)
 -   Cluster admin permissions
+
+### Optional Prerequisites
+-   **[cert-manager](https://cert-manager.io/docs/installation/)** - Required only if using the `cert-manager` certificate management mode (see [Certificate Management](../general/cert-manager.md) for details)
 
 ## Installation Methods
 
@@ -103,32 +106,6 @@ kubectl get crd | grep kthena
 # Check services
 kubectl get svc -n kthena-system
 ```
-
-## Certificate Management
-
-Kthena components such as webhooks and the router require certificates for secure communication.
-
-### Default Configuration (Requires cert-manager)
-
-When installing Kthena using the default configuration, **cert-manager is required** to automatically handle certificate provisioning and management for webhooks and other secure components.
-
-To install cert-manager, follow the official installation guide: [Cert Manager Installation](https://cert-manager.io/docs/installation/)
-
-### Manual Certificate Management (Fallback Option)
-
-If you cannot use cert-manager in your environment, you can disable it and manually configure certificate management using your own CA bundle.
-
-   ```bash
-   helm install kthena oci://ghcr.io/volcano-sh/charts/kthena \
-     --namespace kthena-system \
-     --create-namespace \
-     --set global.certManager.enabled=false
-     --set global.webhook.caBundle="LS0tLS1CRUdJTi..."
-   ```
-
-For more details, please refer to the  [Manual Certificate Management](../general/cert-manager.md#manual-certificate-management) documentation.
-
-> **Note**: Manual certificate management requires additional configuration and maintenance. We recommend using cert-manager for production environments.
 
 ## Gang Scheduling
 
