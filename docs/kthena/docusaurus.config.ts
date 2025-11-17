@@ -9,7 +9,7 @@ import rehypeKatex from 'rehype-katex';
 const config: Config = {
   title: 'Kthena',
   tagline: 'Kubernetes-native AI serving platform for scalable model serving',
-  favicon: 'img/volcano-logo.png',
+  favicon: 'img/favicon.ico',
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
   future: {
