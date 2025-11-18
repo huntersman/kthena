@@ -67,8 +67,8 @@ func startControllers(store datastore.Store, stop <-chan struct{}) Controller {
 
 	modelRouteController := controller.NewModelRouteController(kthenaInformerFactory, store)
 	modelServerController := controller.NewModelServerController(kthenaInformerFactory, kubeInformerFactory, store)
-	gatewayController := controller.NewGatewayController(gatewayInformerFactory, store)
-	gatewayClassController := controller.NewGatewayClassController(gatewayInformerFactory, store)
+	gatewayController := controller.NewGatewayController(gatewayInformerFactory, kubeClient, store)
+	gatewayClassController := controller.NewGatewayClassController(gatewayClient, store)
 
 	kubeInformerFactory.Start(stop)
 	kthenaInformerFactory.Start(stop)

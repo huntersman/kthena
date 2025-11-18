@@ -17,26 +17,25 @@ limitations under the License.
 package controller
 
 import (
+	"context"
 	"fmt"
 	"sync/atomic"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	gatewayinformers "sigs.k8s.io/gateway-api/pkg/client/informers/externalversions"
-	gatewaylisters "sigs.k8s.io/gateway-api/pkg/client/listers/apis/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayclientset "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned"
 
 	"github.com/volcano-sh/kthena/pkg/kthena-router/datastore"
 )
 
 type GatewayClassController struct {
-	gatewayClassLister gatewaylisters.GatewayClassLister
-	gatewayClassSynced cache.InformerSynced
-	registration       cache.ResourceEventHandlerRegistration
+	gatewayClient gatewayclientset.Interface
 
 	workqueue   workqueue.TypedRateLimitingInterface[any]
 	initialSync *atomic.Bool
@@ -44,26 +43,15 @@ type GatewayClassController struct {
 }
 
 func NewGatewayClassController(
-	gatewayInformerFactory gatewayinformers.SharedInformerFactory,
+	gatewayClient gatewayclientset.Interface,
 	store datastore.Store,
 ) *GatewayClassController {
-	gatewayClassInformer := gatewayInformerFactory.Gateway().V1().GatewayClasses()
-
 	controller := &GatewayClassController{
-		gatewayClassLister: gatewayClassInformer.Lister(),
-		gatewayClassSynced: gatewayClassInformer.Informer().HasSynced,
-		workqueue:          workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]()),
-		initialSync:        &atomic.Bool{},
-		store:              store,
+		gatewayClient: gatewayClient,
+		workqueue:     workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]()),
+		initialSync:   &atomic.Bool{},
+		store:         store,
 	}
-
-	controller.registration, _ = gatewayClassInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: controller.enqueueGatewayClass,
-		UpdateFunc: func(old, new interface{}) {
-			controller.enqueueGatewayClass(new)
-		},
-		DeleteFunc: controller.enqueueGatewayClass,
-	})
 
 	return controller
 }
@@ -72,9 +60,12 @@ func (c *GatewayClassController) Run(stopCh <-chan struct{}) error {
 	defer utilruntime.HandleCrash()
 	defer c.workqueue.ShutDown()
 
-	if ok := cache.WaitForCacheSync(stopCh, c.registration.HasSynced); !ok {
-		return fmt.Errorf("failed to wait for caches to sync")
+	// Create default GatewayClass if it doesn't exist
+	if err := c.ensureDefaultGatewayClass(); err != nil {
+		klog.Errorf("Failed to ensure default GatewayClass: %v", err)
+		return err
 	}
+
 	c.workqueue.Add(initialSyncSignal)
 
 	go wait.Until(c.runWorker, time.Second, stopCh)
@@ -100,54 +91,49 @@ func (c *GatewayClassController) processNextWorkItem() bool {
 	defer c.workqueue.Done(obj)
 
 	if obj == initialSyncSignal {
-		klog.V(2).Info("initial gateway classes have been synced")
+		klog.V(2).Info("default GatewayClass has been ensured")
 		c.workqueue.Forget(obj)
 		c.initialSync.Store(true)
 		return true
 	}
 
-	var key string
-	var ok bool
-	if key, ok = obj.(string); !ok {
-		c.workqueue.Forget(obj)
-		utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-		return true
-	}
-
-	if err := c.syncHandler(key); err != nil {
-		if c.workqueue.NumRequeues(key) < maxRetries {
-			klog.V(2).Infof("error syncing gatewayclass %q: %s, requeuing", key, err.Error())
-			c.workqueue.AddRateLimited(key)
-			return true
-		}
-		klog.V(2).Infof("giving up on syncing gatewayclass %q after %d retries: %s", key, maxRetries, err)
-		c.workqueue.Forget(obj)
-	}
 	return true
 }
 
-func (c *GatewayClassController) syncHandler(key string) error {
-	gatewayClass, err := c.gatewayClassLister.Get(key)
-	if errors.IsNotFound(err) {
-		_ = c.store.DeleteGatewayClass(key)
+// ensureDefaultGatewayClass creates the default GatewayClass if it doesn't exist
+func (c *GatewayClassController) ensureDefaultGatewayClass() error {
+	ctx := context.Background()
+
+	// Check if GatewayClass already exists
+	_, err := c.gatewayClient.GatewayV1().GatewayClasses().Get(ctx, DefaultGatewayClassName, metav1.GetOptions{})
+	if err == nil {
+		klog.V(2).Infof("Default GatewayClass %s already exists", DefaultGatewayClassName)
 		return nil
 	}
+
+	if !apierrors.IsNotFound(err) {
+		return fmt.Errorf("failed to check GatewayClass %s: %w", DefaultGatewayClassName, err)
+	}
+
+	// Create the default GatewayClass
+	gatewayClass := &gatewayv1.GatewayClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: DefaultGatewayClassName,
+		},
+		Spec: gatewayv1.GatewayClassSpec{
+			ControllerName: gatewayv1.GatewayController(ControllerName),
+		},
+	}
+
+	_, err = c.gatewayClient.GatewayV1().GatewayClasses().Create(ctx, gatewayClass, metav1.CreateOptions{})
 	if err != nil {
-		return err
+		if apierrors.IsAlreadyExists(err) {
+			klog.V(2).Infof("GatewayClass %s was created by another process", DefaultGatewayClassName)
+			return nil
+		}
+		return fmt.Errorf("failed to create GatewayClass %s: %w", DefaultGatewayClassName, err)
 	}
 
-	if err := c.store.AddOrUpdateGatewayClass(gatewayClass); err != nil {
-		return err
-	}
-
+	klog.Infof("Created default GatewayClass %s", DefaultGatewayClassName)
 	return nil
-}
-
-func (c *GatewayClassController) enqueueGatewayClass(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	c.workqueue.Add(key)
 }

@@ -63,6 +63,11 @@ func (s *Server) Run(ctx context.Context) {
 	store.Run(ctx)
 	// start router
 	s.startRouter(ctx, r, store)
+
+	// Block until context is cancelled to keep the process running
+	klog.Info("Router server started, waiting for shutdown signal...")
+	<-ctx.Done()
+	klog.Info("Router server shutting down...")
 }
 
 func (s *Server) HasSynced() bool {

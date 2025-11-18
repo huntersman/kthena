@@ -8,7 +8,7 @@ spec:
   parentRefs:
   # When Gateway and ModelRoute are in different namespaces, namespace must be specified
   - name: kthena-gateway
-    namespace: default  # Required: Gateway is in default namespace, ModelRoute is in dev namespace
+    namespace: kthena-system  # Required: Gateway is in kthena-system namespace, ModelRoute is in dev namespace
   rules:
     - name: "default"
       targetModels:

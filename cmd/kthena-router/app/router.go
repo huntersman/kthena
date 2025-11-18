@@ -69,14 +69,6 @@ func (s *Server) startRouter(ctx context.Context, router *router.Router, store d
 			listenerManager.StopListenersForGateway(key)
 		}
 	})
-
-	// Start listeners for existing Gateways
-	gatewayObjs := store.GetAllGateways()
-	for _, obj := range gatewayObjs {
-		if gw, ok := obj.(*gatewayv1.Gateway); ok {
-			listenerManager.StartListenersForGateway(gw)
-		}
-	}
 }
 
 // startManagementServer starts the management HTTP server on fixed port
