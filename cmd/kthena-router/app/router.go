@@ -69,6 +69,16 @@ func (s *Server) startRouter(ctx context.Context, router *router.Router, store d
 			listenerManager.StopListenersForGateway(key)
 		}
 	})
+
+	// Initialize listeners for existing Gateways that were added before callback registration
+	// This ensures we don't lose Gateway events that occurred during controller startup
+	existingGateways := store.GetAllGateways()
+	for _, gatewayObj := range existingGateways {
+		if gw, ok := gatewayObj.(*gatewayv1.Gateway); ok {
+			klog.V(4).Infof("Initializing listeners for existing Gateway %s/%s", gw.Namespace, gw.Name)
+			listenerManager.StartListenersForGateway(gw)
+		}
+	}
 }
 
 // startManagementServer starts the management HTTP server on fixed port
