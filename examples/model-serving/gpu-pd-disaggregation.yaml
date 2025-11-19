@@ -17,7 +17,7 @@ spec:
             initContainers:
               - name: downloader
                 imagePullPolicy: IfNotPresent
-                image: ghcr.io/kthena/downloader:latest
+                image: ghcr.io/volcano-sh/downloader:latest
                 args:
                   - --source
                   - Qwen/Qwen3-8B
@@ -106,7 +106,7 @@ spec:
             initContainers:
               - name: downloader
                 imagePullPolicy: IfNotPresent
-                image: ghcr.io/kthena/downloader:latest
+                image: ghcr.io/volcano-sh/downloader:latest
                 args:
                   - --source
                   - Qwen/Qwen3-8B
