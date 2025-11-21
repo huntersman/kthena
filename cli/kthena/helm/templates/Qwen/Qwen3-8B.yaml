@@ -14,7 +14,7 @@ spec:
   backends:
     - name: {{ .Values.backendName | default "qwen3-8b-vllm" | quote }}
       type: {{ .Values.backendType | default "vLLM" | quote }}
-      modelURI: {{ .Values.modelURI | default "hf://Qwen/Qwen3-8b" | quote }}
+      modelURI: {{ .Values.modelURI | default "hf://Qwen/Qwen3-8B" | quote }}
       cacheURI: {{ .Values.cacheURI | default "hostpath://mnt/cache" | quote }}
       minReplicas: {{ .Values.minReplicas | default 1 }}
       maxReplicas: {{ .Values.maxReplicas | default 3 }}
