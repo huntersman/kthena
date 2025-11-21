@@ -65,7 +65,7 @@ func TestGetCachePath(t *testing.T) {
 	}{
 		{
 			name:     "normal case1",
-			input:    "pvc://my-cache-path",
+			input:    "pvc://my-cache-path////",
 			expected: "/my-cache-path",
 		},
 		{
