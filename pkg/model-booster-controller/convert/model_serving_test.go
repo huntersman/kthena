@@ -64,9 +64,19 @@ func TestGetCachePath(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "normal case",
+			name:     "normal case1",
 			input:    "pvc://my-cache-path",
-			expected: "my-cache-path",
+			expected: "/my-cache-path",
+		},
+		{
+			name:     "normal case2",
+			input:    "pvc:///my-cache-path",
+			expected: "/my-cache-path",
+		},
+		{
+			name:     "normal case3",
+			input:    "pvc:////my-cache-path",
+			expected: "/my-cache-path",
 		},
 		{
 			name:     "empty cache path",
@@ -81,7 +91,7 @@ func TestGetCachePath(t *testing.T) {
 		{
 			name:     "multiple separators",
 			input:    "pvc://path/with/multiple/separators",
-			expected: "path/with/multiple/separators",
+			expected: "/path/with/multiple/separators",
 		},
 	}
 	for _, tt := range tests {
