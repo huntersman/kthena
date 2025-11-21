@@ -380,7 +380,7 @@ func GetCachePath(path string) string {
 		return ""
 	}
 	s := strings.Split(path, URIPrefixSeparator)[1]
-	s = strings.TrimLeft(s, "/")
+	s = strings.Trim(s, "/")
 	builder := strings.Builder{}
 	builder.WriteString("/")
 	builder.WriteString(s)
