@@ -139,6 +139,10 @@ A `subGroupPolicy` has been added to the `podGroup` to ensure task-level gang sc
 - `matchPolicy`: The label key used to match pods.
 - `networkTopology`: The network topology of a subGroup.
 
+This YAML specifies that the PodGroup requires six pods to be deployed together, and all six pods must be scheduled on nodes with a maximum network topology distance of 2. Among these, the six pods are divided into two subGroups of three based on the value of the `volcano.sh/task-subgroup-id` label, and each group must be strictly scheduled on nodes with a network topology distance of 1.
+
+**Note:** You can refer to [network topology](https://volcano.sh/en/docs/network_topology_aware_scheduling/) know more about network topology details.
+
 `ModelServing` provides a `GangPolicy`, which determines the minimum number of replicas expected for a role. Based on this configuration, we can create `podGroup`.
 
 ```yaml
@@ -167,7 +171,7 @@ spec:
     - name: network-topology
       matchPolicy:
         - labelKey: "modelserving.volcano.sh/role"
-        - labelkey: "modelserving.volcano.sh/role-id"
+        - labelKey: "modelserving.volcano.sh/role-id"
       networkTopology:
         mode: hard 
         highestTierAllowed: 1
@@ -182,9 +186,49 @@ modelserving.volcano.sh/role-id: prefill-0
 
 So we can use the labels "modelserving.volcano.sh/role" and "modelserving.volcano.sh/role-id" to group the pods that need to be deployed.
 
-Therefore, we still provide the `NetworkTopology` within the `ServingGroup` to ensure that the overall `NetworkTopology` of the `ServingGroup` aligns with the `NetworkTopology` of the `Roles`.
-
 Therefore, we still provide the `NetworkTopologySpec` within the `ServingGroup`, where you can configure both the ServingGroup-level network topology and the role-level network topology.
+
+```go
+// NetworkTopologySpec defines the network topology affinity scheduling policy for the roles and group, it works only when the scheduler supports network topology feature.
+type NetworkTopologySpec struct {
+    // GroupPolicy defines the network topology of the ServingGroup.
+    GroupPolicy *volcanoV1Beta1.NetworkTopologySpec `json:"networkTopology,omitempty"`
+
+    // RolePolicy defines the network topology of the role.
+    RolePolicy *volcanoV1Beta1.NetworkTopologySpec `json:"roleNetworkTopology,omitempty"`
+}
+```
+
+```yaml
+apiVersion: workload.serving.volcano.sh/v1alpha1
+kind: ModelServing
+metadata:
+  name: sample
+  namespace: default
+spec:
+  schedulerName: volcano
+  replicas: 1  # servingGroup replicas
+  template:
+    gangPolicy:
+      minRoleReplicas:
+        prefill: 2
+        decode: 1
+    networkTopology:
+      groupPolicy:
+        mode: hard
+        highestTierAllowed: 2
+      rolePolicy:
+        mode: hard
+        highestTierAllowed: 1
+    restartGracePeriodSeconds: 60
+    roles:
+      - name: prefill
+        replicas: 2
+        # ......
+      - name: decode
+        replicas: 1  # role replicas, for example, 1P1D
+        # ......
+``
 
 #### Test Plan
 
