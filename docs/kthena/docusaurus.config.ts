@@ -16,6 +16,16 @@ const config: Config = {
     v4: true, // Improve compatibility with the upcoming Docusaurus v4
   },
 
+  headTags: [
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'algolia-site-verification',
+        content: '363A58E1807B6EF0',
+      },
+    },
+  ],
+
   // Set the production url of your site here
   url: 'https://kthena.volcano.sh',
   // Set the /<baseUrl>/ pathname under which your site is served
