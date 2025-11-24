@@ -48,46 +48,51 @@ func NewRouter(store datastore.Store) *router.Router {
 func (s *Server) startRouter(ctx context.Context, router *router.Router, store datastore.Store) {
 	gin.SetMode(gin.ReleaseMode)
 
-	// Create listener manager for dynamic Gateway listener management
-	listenerManager := NewListenerManager(ctx, router, store, s)
-	s.listenerManager = listenerManager
+	// Always start default server on fixed port
+	s.startDefaultServer(ctx, router, store)
 
-	// Always start management endpoints on fixed port
-	s.startManagementServer(ctx, router, store)
+	// Gateway API features are optional
+	if s.EnableGatewayAPI {
+		// Create listener manager for dynamic Gateway listener management
+		listenerManager := NewListenerManager(ctx, router, store, s)
+		s.listenerManager = listenerManager
 
-	// Register callback to handle Gateway events dynamically
-	store.RegisterCallback("Gateway", func(data datastore.EventData) {
-		key := fmt.Sprintf("%s/%s", data.Pod.Namespace, data.Pod.Name)
-		switch data.EventType {
-		case datastore.EventAdd, datastore.EventUpdate:
-			if gatewayObj := store.GetGateway(key); gatewayObj != nil {
-				if gw, ok := gatewayObj.(*gatewayv1.Gateway); ok {
-					listenerManager.StartListenersForGateway(gw)
+		// Register callback to handle Gateway events dynamically
+		store.RegisterCallback("Gateway", func(data datastore.EventData) {
+			key := fmt.Sprintf("%s/%s", data.Pod.Namespace, data.Pod.Name)
+			switch data.EventType {
+			case datastore.EventAdd, datastore.EventUpdate:
+				if gatewayObj := store.GetGateway(key); gatewayObj != nil {
+					if gw, ok := gatewayObj.(*gatewayv1.Gateway); ok {
+						listenerManager.StartListenersForGateway(gw)
+					}
 				}
+			case datastore.EventDelete:
+				listenerManager.StopListenersForGateway(key)
 			}
-		case datastore.EventDelete:
-			listenerManager.StopListenersForGateway(key)
-		}
-	})
+		})
 
-	// Initialize listeners for existing Gateways that were added before callback registration
-	// This ensures we don't lose Gateway events that occurred during controller startup
-	existingGateways := store.GetAllGateways()
-	for _, gatewayObj := range existingGateways {
-		if gw, ok := gatewayObj.(*gatewayv1.Gateway); ok {
-			klog.V(4).Infof("Initializing listeners for existing Gateway %s/%s", gw.Namespace, gw.Name)
-			listenerManager.StartListenersForGateway(gw)
+		// Initialize listeners for existing Gateways that were added before callback registration
+		// This ensures we don't lose Gateway events that occurred during controller startup
+		existingGateways := store.GetAllGateways()
+		for _, gatewayObj := range existingGateways {
+			if gw, ok := gatewayObj.(*gatewayv1.Gateway); ok {
+				klog.V(4).Infof("Initializing listeners for existing Gateway %s/%s", gw.Namespace, gw.Name)
+				listenerManager.StartListenersForGateway(gw)
+			}
 		}
+	} else {
+		klog.Info("Gateway API features are disabled")
 	}
 }
 
-// startManagementServer starts the management HTTP server on fixed port
-// This server handles healthz, readyz, metrics, and debug endpoints only
-func (s *Server) startManagementServer(ctx context.Context, router *router.Router, store datastore.Store) {
+// startDefaultServer starts the default HTTP server on fixed port
+// This server handles healthz, readyz, metrics, debug endpoints, and /v1/*path
+func (s *Server) startDefaultServer(ctx context.Context, router *router.Router, store datastore.Store) {
 	engine := gin.New()
 	engine.Use(gin.LoggerWithWriter(gin.DefaultWriter, "/healthz", "/readyz", "/metrics"), gin.Recovery())
 
-	// Management endpoints (no auth/access log middleware)
+	// Default endpoints (no auth/access log middleware)
 	engine.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "ok",
@@ -124,12 +129,18 @@ func (s *Server) startManagementServer(ctx context.Context, router *router.Route
 		debugGroup.GET("/namespaces/:namespace/pods/:name", debugHandler.GetPod)
 	}
 
+	// Handle /v1/*path with middleware
+	v1Group := engine.Group("/v1")
+	v1Group.Use(AccessLogMiddleware(router))
+	v1Group.Use(AuthMiddleware(router))
+	v1Group.Any("/*path", router.HandlerFunc())
+
 	server := &http.Server{
 		Addr:    ":" + s.Port,
 		Handler: engine.Handler(),
 	}
 	go func() {
-		klog.Infof("Starting management server on port %s", s.Port)
+		klog.Infof("Starting default server on port %s", s.Port)
 		var err error
 		if s.EnableTLS {
 			if s.TLSCertFile == "" || s.TLSKeyFile == "" {
@@ -147,13 +158,13 @@ func (s *Server) startManagementServer(ctx context.Context, router *router.Route
 	go func() {
 		<-ctx.Done()
 		// graceful shutdown
-		klog.Info("Shutting down management HTTP server ...")
+		klog.Info("Shutting down default HTTP server ...")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), gracefulShutdownTimeout)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			klog.Errorf("Management server shutdown failed: %v", err)
+			klog.Errorf("Default server shutdown failed: %v", err)
 		}
-		klog.Info("Management HTTP server exited")
+		klog.Info("Default HTTP server exited")
 	}()
 }
 
@@ -221,10 +232,10 @@ func (lm *ListenerManager) StartListenersForGateway(gateway *gatewayv1.Gateway) 
 		// Only handle /v1/*path on Gateway listeners
 		engine.Any("/v1/*path", lm.router.HandlerFunc())
 
-		// Return 404 for all other paths (management endpoints are on fixed port)
+		// Return 404 for all other paths
 		engine.NoRoute(func(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{
-				"message": "Not found. Management endpoints are available on the management port.",
+				"message": "Not found",
 			})
 		})
 

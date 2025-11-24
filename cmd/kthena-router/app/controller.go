@@ -40,7 +40,7 @@ type aggregatedController struct {
 
 var _ Controller = &aggregatedController{}
 
-func startControllers(store datastore.Store, stop <-chan struct{}) Controller {
+func startControllers(store datastore.Store, stop <-chan struct{}, enableGatewayAPI bool) Controller {
 	cfg, err := clientcmd.BuildConfigFromFlags("", "")
 	if err != nil {
 		klog.Fatalf("Error building kubeconfig: %s", err.Error())
@@ -56,23 +56,14 @@ func startControllers(store datastore.Store, stop <-chan struct{}) Controller {
 		klog.Fatalf("Error building kthena clientset: %s", err.Error())
 	}
 
-	gatewayClient, err := gatewayclientset.NewForConfig(cfg)
-	if err != nil {
-		klog.Fatalf("Error building gateway clientset: %s", err.Error())
-	}
-
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
 	kthenaInformerFactory := kthenaInformers.NewSharedInformerFactory(kthenaClient, 0)
-	gatewayInformerFactory := gatewayinformers.NewSharedInformerFactory(gatewayClient, 0)
 
 	modelRouteController := controller.NewModelRouteController(kthenaInformerFactory, store)
 	modelServerController := controller.NewModelServerController(kthenaInformerFactory, kubeInformerFactory, store)
-	gatewayController := controller.NewGatewayController(gatewayInformerFactory, kubeClient, store)
-	gatewayClassController := controller.NewGatewayClassController(gatewayClient, store)
 
 	kubeInformerFactory.Start(stop)
 	kthenaInformerFactory.Start(stop)
-	gatewayInformerFactory.Start(stop)
 
 	go func() {
 		if err := modelRouteController.Run(stop); err != nil {
@@ -86,25 +77,43 @@ func startControllers(store datastore.Store, stop <-chan struct{}) Controller {
 		}
 	}()
 
-	go func() {
-		if err := gatewayController.Run(stop); err != nil {
-			klog.Fatalf("Error running gateway controller: %s", err.Error())
-		}
-	}()
+	controllers := []Controller{
+		modelRouteController,
+		modelServerController,
+	}
 
-	go func() {
-		if err := gatewayClassController.Run(stop); err != nil {
-			klog.Fatalf("Error running gateway class controller: %s", err.Error())
+	// Gateway API controllers are optional
+	if enableGatewayAPI {
+		gatewayClient, err := gatewayclientset.NewForConfig(cfg)
+		if err != nil {
+			klog.Fatalf("Error building gateway clientset: %s", err.Error())
 		}
-	}()
+
+		gatewayInformerFactory := gatewayinformers.NewSharedInformerFactory(gatewayClient, 0)
+		gatewayController := controller.NewGatewayController(gatewayInformerFactory, kubeClient, store)
+		gatewayClassController := controller.NewGatewayClassController(gatewayClient, store)
+
+		gatewayInformerFactory.Start(stop)
+
+		go func() {
+			if err := gatewayController.Run(stop); err != nil {
+				klog.Fatalf("Error running gateway controller: %s", err.Error())
+			}
+		}()
+
+		go func() {
+			if err := gatewayClassController.Run(stop); err != nil {
+				klog.Fatalf("Error running gateway class controller: %s", err.Error())
+			}
+		}()
+
+		controllers = append(controllers, gatewayController, gatewayClassController)
+	} else {
+		klog.Info("Gateway API controllers are disabled")
+	}
 
 	return &aggregatedController{
-		controllers: []Controller{
-			modelRouteController,
-			modelServerController,
-			gatewayController,
-			gatewayClassController,
-		},
+		controllers: controllers,
 	}
 }
 
