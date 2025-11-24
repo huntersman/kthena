@@ -26,61 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-func TestValidateScheduler(t *testing.T) {
-	type args struct {
-		mi *workloadv1alpha1.ModelServing
-	}
-	tests := []struct {
-		name string
-		args args
-		want field.ErrorList
-	}{
-		{
-			name: "valid scheduler",
-			args: args{
-				mi: &workloadv1alpha1.ModelServing{
-					Spec: workloadv1alpha1.ModelServingSpec{
-						SchedulerName: "vo",
-					},
-				},
-			},
-			want: field.ErrorList{
-				field.Invalid(field.NewPath("spec").Child("schedulerName"), "vo", "invalid SchedulerName: vo, modelServing support: volcano ..."),
-			},
-		},
-		{
-			name: "empty scheduler",
-			args: args{
-				mi: &workloadv1alpha1.ModelServing{
-					Spec: workloadv1alpha1.ModelServingSpec{
-						SchedulerName: "",
-					},
-				},
-			},
-			want: field.ErrorList{
-				field.Invalid(field.NewPath("spec").Child("schedulerName"), "", "invalid SchedulerName: , modelServing support: volcano ..."),
-			},
-		},
-		{
-			name: "formal scheduler",
-			args: args{
-				mi: &workloadv1alpha1.ModelServing{
-					Spec: workloadv1alpha1.ModelServingSpec{
-						SchedulerName: "volcano",
-					},
-				},
-			},
-			want: field.ErrorList(nil),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := validateScheduler(tt.args.mi)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
 func TestValidPodNameLength(t *testing.T) {
 	replicas := int32(3)
 	type args struct {

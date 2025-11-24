@@ -55,6 +55,9 @@ type ModelServingSpec struct {
 	Replicas *int32 `json:"replicas,omitempty"`
 
 	// SchedulerName defines the name of the scheduler used by ModelServing
+	//
+	// +optional
+	// +kubebuilder:default=volcano
 	SchedulerName string `json:"schedulerName"`
 
 	// Template defines the template for ServingGroup

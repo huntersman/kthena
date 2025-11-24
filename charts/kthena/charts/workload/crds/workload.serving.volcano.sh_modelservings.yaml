@@ -110,6 +110,7 @@ spec:
                 - type
                 type: object
               schedulerName:
+                default: volcano
                 description: SchedulerName defines the name of the scheduler used
                   by ModelServing
                 type: string
@@ -16768,7 +16769,6 @@ spec:
                   type: object
                 type: array
             required:
-            - schedulerName
             - template
             type: object
           status:
