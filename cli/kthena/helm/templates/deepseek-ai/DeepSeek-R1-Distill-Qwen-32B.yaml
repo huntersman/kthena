@@ -27,6 +27,7 @@ spec:
           pods: {{ .Values.workerPods | default 1 }}
           config:
             served-model-name: {{ .Values.modelName | default .Values.name | default "deepseek-r1-distill-qwen-32b" | quote }}
+            tensor-parallel-size: {{ .Values.tensorParallelSize | default 2 }}
           resources:
             limits:
               nvidia.com/gpu: {{ .Values.gpuLimit | default "1" | quote }}

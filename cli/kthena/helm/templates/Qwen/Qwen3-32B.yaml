@@ -27,6 +27,7 @@ spec:
           pods: {{ .Values.workerPods | default 1 }}
           config:
             served-model-name: {{ .Values.modelName | default .Values.name | default "qwen3-32b" | quote }}
+            tensor-parallel-size: {{ .Values.tensorParallelSize | default 2 }}
           resources:
             limits:
               nvidia.com/gpu: {{ .Values.gpuLimit | default "2" | quote }}
