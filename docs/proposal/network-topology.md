@@ -189,13 +189,36 @@ So we can use the labels "modelserving.volcano.sh/role" and "modelserving.volcan
 Therefore, we still provide the `NetworkTopologySpec` within the `ServingGroup`, where you can configure both the ServingGroup-level network topology and the role-level network topology.
 
 ```go
+// ServingGroup is the smallest unit to complete the inference task
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.gangPolicy) || has(self.gangPolicy)", message="gangPolicy is required once set"
+type ServingGroup struct {
+    // RestartGracePeriodSeconds defines the grace time for the controller to rebuild the ServingGroup when an error occurs
+    // Defaults to 0 (ServingGroup will be rebuilt immediately after an error)
+    // +optional
+    // +kubebuilder:default=0
+    RestartGracePeriodSeconds *int64 `json:"restartGracePeriodSeconds,omitempty"`
+
+    // GangPolicy defines the gang scheduler config.
+    // +optional
+    GangPolicy *GangPolicy `json:"gangPolicy,omitempty"`
+
+    // NetworkTopology defines the network topology affinity scheduling policy for the roles of the group, it works only when the scheduler supports network topology feature (e.g. volcano).  
+    // +optional
+    NetworkTopology *NetworkTopology `json:"networkTopology,omitempty"`
+
+    // +kubebuilder:validation:MaxItems=4
+    // +kubebuilder:validation:MinItems=1
+    // +kubebuilder:validation:XValidation:rule="self.all(x, self.exists_one(y, y.name == x.name))", message="roles name must be unique"
+    Roles []Role `json:"roles"`
+}
+
 // NetworkTopologySpec defines the network topology affinity scheduling policy for the roles and group, it works only when the scheduler supports network topology feature.
-type NetworkTopologySpec struct {
+type NetworkTopology struct {
     // GroupPolicy defines the network topology of the ServingGroup.
-    GroupPolicy *volcanoV1Beta1.NetworkTopologySpec `json:"networkTopology,omitempty"`
+    GroupPolicy *volcanoV1Beta1.NetworkTopologySpec `json:"groupPolicy,omitempty"`
 
     // RolePolicy defines the network topology of the role.
-    RolePolicy *volcanoV1Beta1.NetworkTopologySpec `json:"roleNetworkTopology,omitempty"`
+    RolePolicy *volcanoV1Beta1.NetworkTopologySpec `json:"rolePolicy,omitempty"`
 }
 ```
 
