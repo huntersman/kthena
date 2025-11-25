@@ -16,7 +16,7 @@
 
 set -e
 
-CLUSTER_NAME=${CLUSTER_NAME:-matrixinfer-e2e}
+CLUSTER_NAME=${CLUSTER_NAME:-kthena-e2e}
 
 echo "Cleaning up Kind cluster for E2E tests..."
 
