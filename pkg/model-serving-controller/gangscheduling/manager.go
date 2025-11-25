@@ -57,9 +57,16 @@ func (m *Manager) ManagePodGroups(ctx context.Context, mi *workloadv1alpha1.Mode
 	return nil
 }
 
-// isSchedulingEnabled checks if gang scheduling or networkTopology scheduling is enabled for the ModelServing
+// isSchedulingEnabled checks if gang scheduling or networkTopology scheduling is enabled for the ModelServing.
+// These advanced scheduling features are only effective when used with the "volcano" scheduler.
 func (m *Manager) isSchedulingEnabled(mi *workloadv1alpha1.ModelServing) bool {
-	return mi.Spec.Template.GangPolicy != nil || mi.Spec.Template.NetworkTopology != nil
+	schedulerName := mi.Spec.SchedulerName
+	// If schedulerName is empty, Kubernetes uses the default scheduler, which doesn't support gang/network topology.
+	isVolcano := schedulerName == "volcano"
+
+	hasGangOrTopology := mi.Spec.Template.GangPolicy != nil || mi.Spec.Template.NetworkTopology != nil
+
+	return isVolcano && hasGangOrTopology
 }
 
 // managePodGroups manages PodGroups for group-level gang scheduling
