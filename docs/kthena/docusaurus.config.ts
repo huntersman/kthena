@@ -16,6 +16,16 @@ const config: Config = {
     v4: true, // Improve compatibility with the upcoming Docusaurus v4
   },
 
+  headTags: [
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'algolia-site-verification',
+        content: '363A58E1807B6EF0',
+      },
+    },
+  ],
+
   // Set the production url of your site here
   url: 'https://kthena.volcano.sh',
   // Set the /<baseUrl>/ pathname under which your site is served
@@ -169,6 +179,29 @@ const config: Config = {
     prism: {
       theme: prismThemes.github,
       darkTheme: prismThemes.dracula,
+    },
+    algolia: {
+      // The application ID provided by Algolia
+      appId: 'KWQGHZRPIK',
+
+      // Public API key: it is safe to commit it
+      apiKey: 'f58be992d82f553447f32a95a27ed8a4',
+
+      indexName: 'Kthena Documentation Crawler',
+
+      // Optional: see doc section below
+      contextualSearch: true,
+
+      // Optional: path for search page that enabled by default (`false` to disable it)
+      searchPagePath: 'search',
+
+      // Optional: whether the insights feature is enabled or not on Docsearch (`false` by default)
+      insights: false,
+
+      // Optional: whether you want to use the new Ask AI feature (undefined by default)
+      askAi: 'xv1HgWgFfA4q',
+
+      //... other Algolia params
     },
   } satisfies Preset.ThemeConfig,
 };
