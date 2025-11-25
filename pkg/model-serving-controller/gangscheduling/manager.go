@@ -139,7 +139,7 @@ func (m *Manager) createPodGroup(ctx context.Context, mi *workloadv1alpha1.Model
 		},
 	}
 
-	podGroup = m.buildNetwoekTopologyPolicy(mi, podGroup)
+	podGroup = m.buildNetworkTopologyPolicy(mi, podGroup)
 
 	_, err := m.volcanoClient.SchedulingV1beta1().PodGroups(mi.Namespace).Create(ctx, podGroup, metav1.CreateOptions{})
 	if err != nil && !apierrors.IsAlreadyExists(err) {
@@ -150,7 +150,7 @@ func (m *Manager) createPodGroup(ctx context.Context, mi *workloadv1alpha1.Model
 	return nil
 }
 
-func (m *Manager) buildNetwoekTopologyPolicy(mi *workloadv1alpha1.ModelServing, podGroup *schedulingv1beta1.PodGroup) *schedulingv1beta1.PodGroup {
+func (m *Manager) buildNetworkTopologyPolicy(mi *workloadv1alpha1.ModelServing, podGroup *schedulingv1beta1.PodGroup) *schedulingv1beta1.PodGroup {
 	if mi.Spec.Template.NetworkTopology != nil {
 		// set NetworkTopology if configured in ModelServing
 		if mi.Spec.Template.NetworkTopology.GroupPolicy != nil {
@@ -330,16 +330,16 @@ func (m *Manager) updatePodGroupIfNeeded(ctx context.Context, existing *scheduli
 		if len(updated.Spec.SubGroupPolicy) > 0 {
 			needsUpdate = true
 		}
-	}
+	} else {
+		if !equalVolcanoNetworkTopology(updated.Spec.NetworkTopology, mi.Spec.Template.NetworkTopology.GroupPolicy) {
+			updated.Spec.NetworkTopology = mi.Spec.Template.NetworkTopology.GroupPolicy
+			needsUpdate = true
+		}
 
-	if !equalVolcanoNetworkTopology(updated.Spec.NetworkTopology, mi.Spec.Template.NetworkTopology.GroupPolicy) {
-		updated.Spec.NetworkTopology = mi.Spec.Template.NetworkTopology.GroupPolicy
-		needsUpdate = true
-	}
-
-	if !equslSubGroupNetworkTopology(updated.Spec.SubGroupPolicy, mi.Spec.Template.NetworkTopology.RolePolicy) {
-		updated = m.buildNetwoekTopologyPolicy(mi, updated)
-		needsUpdate = true
+		if !equalSubGroupNetworkTopology(updated.Spec.SubGroupPolicy, mi.Spec.Template.NetworkTopology.RolePolicy) {
+			updated = m.buildNetworkTopologyPolicy(mi, updated)
+			needsUpdate = true
+		}
 	}
 
 	if needsUpdate {
@@ -522,7 +522,7 @@ func needHandledRoleNameList(expectedReplicas int, existRoleList []datastore.Rol
 }
 
 // equslSubGroupNetworkTopology compares two volcano SubGroupPolicySpec pointers for equality
-func equslSubGroupNetworkTopology(a []schedulingv1beta1.SubGroupPolicySpec, b *schedulingv1beta1.NetworkTopologySpec) bool {
+func equalSubGroupNetworkTopology(a []schedulingv1beta1.SubGroupPolicySpec, b *schedulingv1beta1.NetworkTopologySpec) bool {
 	if len(a) == 0 && b == nil {
 		return true
 	}
@@ -535,7 +535,7 @@ func equslSubGroupNetworkTopology(a []schedulingv1beta1.SubGroupPolicySpec, b *s
 		return false
 	}
 
-	if a[0].MatchPolicy[0].LabelKey != workloadv1alpha1.RoleLabelKey ||
+	if len(a[0].MatchPolicy) < 2 || a[0].MatchPolicy[0].LabelKey != workloadv1alpha1.RoleLabelKey ||
 		a[0].MatchPolicy[1].LabelKey != workloadv1alpha1.RoleIDKey {
 		return false
 	}
