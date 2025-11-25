@@ -958,7 +958,7 @@ func TestNeededHandledPodGroupNameList(t *testing.T) {
 	}
 }
 
-func TestEquslSubGroupNetworkTopology(t *testing.T) {
+func TestEqualSubGroupNetworkTopology(t *testing.T) {
 	// test case 1: both parameters are nil or empty
 	t.Run("both nil or empty", func(t *testing.T) {
 		assert.True(t, equalSubGroupNetworkTopology(nil, nil))
