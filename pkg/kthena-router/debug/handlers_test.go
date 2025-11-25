@@ -232,6 +232,74 @@ func (m *MockStore) GetAllGateways() []*gatewayv1.Gateway {
 	return args.Get(0).([]*gatewayv1.Gateway)
 }
 
+func (m *MockStore) AddOrUpdateInferencePool(inferencePool interface{}) error {
+	args := m.Called(inferencePool)
+	return args.Error(0)
+}
+
+func (m *MockStore) DeleteInferencePool(key string) error {
+	args := m.Called(key)
+	return args.Error(0)
+}
+
+func (m *MockStore) GetInferencePool(key string) interface{} {
+	args := m.Called(key)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0)
+}
+
+func (m *MockStore) GetPodsByInferencePool(name types.NamespacedName) ([]*datastore.PodInfo, error) {
+	args := m.Called(name)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*datastore.PodInfo), args.Error(1)
+}
+
+func (m *MockStore) AddOrUpdateHTTPRoute(httpRoute interface{}) error {
+	args := m.Called(httpRoute)
+	return args.Error(0)
+}
+
+func (m *MockStore) DeleteHTTPRoute(key string) error {
+	args := m.Called(key)
+	return args.Error(0)
+}
+
+func (m *MockStore) GetHTTPRoute(key string) interface{} {
+	args := m.Called(key)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0)
+}
+
+func (m *MockStore) GetHTTPRoutesByGateway(gatewayKey string) []interface{} {
+	args := m.Called(gatewayKey)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]interface{})
+}
+
+func (m *MockStore) GetAllHTTPRoutes() []interface{} {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]interface{})
+}
+
+func (m *MockStore) GetAllInferencePools() []interface{} {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]interface{})
+}
+
 func TestListModelRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

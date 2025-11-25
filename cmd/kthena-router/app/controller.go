@@ -24,6 +24,8 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -48,7 +50,7 @@ type aggregatedController struct {
 
 var _ Controller = &aggregatedController{}
 
-func startControllers(store datastore.Store, stop <-chan struct{}, enableGatewayAPI bool, defaultPort string) Controller {
+func startControllers(store datastore.Store, stop <-chan struct{}, enableGatewayAPI bool, defaultPort string, enableGatewayAPIInferenceExtension bool) Controller {
 	cfg, err := clientcmd.BuildConfigFromFlags("", "")
 	if err != nil {
 		klog.Fatalf("Error building kubeconfig: %s", err.Error())
@@ -110,6 +112,13 @@ func startControllers(store datastore.Store, stop <-chan struct{}, enableGateway
 		gatewayInformerFactory := gatewayinformers.NewSharedInformerFactory(gatewayClient, 0)
 		gatewayController := controller.NewGatewayController(gatewayInformerFactory, store)
 
+		// Gateway API Inference Extension controllers are optional
+		var httpRouteController *controller.HTTPRouteController
+		if enableGatewayAPIInferenceExtension {
+			httpRouteController = controller.NewHTTPRouteController(gatewayInformerFactory, store)
+		}
+
+		// Start informer factory after all controllers that use it are created
 		gatewayInformerFactory.Start(stop)
 
 		go func() {
@@ -119,6 +128,35 @@ func startControllers(store datastore.Store, stop <-chan struct{}, enableGateway
 		}()
 
 		controllers = append(controllers, gatewayController)
+
+		// Gateway API Inference Extension controllers are optional
+		if enableGatewayAPIInferenceExtension {
+
+			dynamicClient, err := dynamic.NewForConfig(cfg)
+			if err != nil {
+				klog.Fatalf("Error building dynamic client: %s", err.Error())
+			}
+			dynamicInformerFactory := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
+			inferencePoolController := controller.NewInferencePoolController(dynamicInformerFactory, store)
+
+			dynamicInformerFactory.Start(stop)
+
+			go func() {
+				if err := httpRouteController.Run(stop); err != nil {
+					klog.Fatalf("Error running httproute controller: %s", err.Error())
+				}
+			}()
+
+			go func() {
+				if err := inferencePoolController.Run(stop); err != nil {
+					klog.Fatalf("Error running inferencepool controller: %s", err.Error())
+				}
+			}()
+
+			controllers = append(controllers, httpRouteController, inferencePoolController)
+		} else {
+			klog.Info("Gateway API Inference Extension controllers are disabled")
+		}
 	} else {
 		klog.Info("Gateway API controllers are disabled")
 	}

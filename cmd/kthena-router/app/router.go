@@ -19,6 +19,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,12 +28,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	"github.com/volcano-sh/kthena/pkg/kthena-router/datastore"
 	"github.com/volcano-sh/kthena/pkg/kthena-router/debug"
 	"github.com/volcano-sh/kthena/pkg/kthena-router/router"
+	inferencev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 )
 
 const (
@@ -118,11 +121,17 @@ func (s *Server) startDefaultServer(ctx context.Context, router *router.Router, 
 		debugGroup.GET("/modelroutes", debugHandler.ListModelRoutes)
 		debugGroup.GET("/modelservers", debugHandler.ListModelServers)
 		debugGroup.GET("/pods", debugHandler.ListPods)
+		debugGroup.GET("/gateways", debugHandler.ListGateways)
+		debugGroup.GET("/httproutes", debugHandler.ListHTTPRoutes)
+		debugGroup.GET("/inferencepools", debugHandler.ListInferencePools)
 
 		// Get specific resources
 		debugGroup.GET("/namespaces/:namespace/modelroutes/:name", debugHandler.GetModelRoute)
 		debugGroup.GET("/namespaces/:namespace/modelservers/:name", debugHandler.GetModelServer)
 		debugGroup.GET("/namespaces/:namespace/pods/:name", debugHandler.GetPod)
+		debugGroup.GET("/namespaces/:namespace/gateways/:name", debugHandler.GetGateway)
+		debugGroup.GET("/namespaces/:namespace/httproutes/:name", debugHandler.GetHTTPRoute)
+		debugGroup.GET("/namespaces/:namespace/inferencepools/:name", debugHandler.GetInferencePool)
 	}
 
 	// Handle /v1/*path with middleware
@@ -493,14 +502,12 @@ func (lm *ListenerManager) StartListenersForGateway(gateway *gatewayv1.Gateway) 
 	oldConfigs := lm.gatewayListeners[gatewayKey]
 
 	newConfigs := buildListenerConfigsFromGateway(gateway)
-
 	// Build maps for efficient comparison
 	oldConfigMap := make(map[string]ListenerConfig)
 	for _, config := range oldConfigs {
 		key := config.listenerConfigKey()
 		oldConfigMap[key] = config
 	}
-
 	newConfigMap := make(map[string]ListenerConfig)
 	for _, config := range newConfigs {
 		key := config.listenerConfigKey()
@@ -630,5 +637,178 @@ func AuthMiddleware(gwRouter *router.Router) gin.HandlerFunc {
 		}
 
 		c.Next()
+	}
+}
+
+func (lm *ListenerManager) handleHTTPRoute(gatewayKey string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Find HTTPRoutes for this Gateway
+		httpRoutes := lm.store.GetHTTPRoutesByGateway(gatewayKey)
+		if len(httpRoutes) == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"message": "No HTTPRoute found"})
+			return
+		}
+
+		// Match HTTPRoute by path and hostname
+		var matchedRoute *gatewayv1.HTTPRoute
+		for _, routeObj := range httpRoutes {
+			route, ok := routeObj.(*gatewayv1.HTTPRoute)
+			if !ok {
+				continue
+			}
+
+			matched := false
+			for _, rule := range route.Spec.Rules {
+				if len(rule.Matches) == 0 {
+					matched = true
+					break
+				}
+				for _, match := range rule.Matches {
+					if match.Path != nil {
+						pathType := match.Path.Type
+						pathValue := match.Path.Value
+						if pathType != nil {
+							switch *pathType {
+							case gatewayv1.PathMatchExact:
+								if c.Request.URL.Path == *pathValue {
+									matched = true
+									break
+								}
+							case gatewayv1.PathMatchPathPrefix:
+								if strings.HasPrefix(c.Request.URL.Path, *pathValue) {
+									matched = true
+									break
+								}
+							case gatewayv1.PathMatchRegularExpression:
+								// Simple regex matching - for production use proper regex
+								if strings.Contains(c.Request.URL.Path, strings.Trim(*pathValue, "^$")) {
+									matched = true
+									break
+								}
+							}
+						}
+					} else {
+						matched = true
+					}
+					if matched {
+						break
+					}
+				}
+				if matched {
+					matchedRoute = route
+					break
+				}
+			}
+			if matched {
+				break
+			}
+		}
+
+		if matchedRoute == nil {
+			c.JSON(http.StatusNotFound, gin.H{"message": "No matching HTTPRoute"})
+			return
+		}
+
+		// Find InferencePool backendRef
+		var inferencePoolName types.NamespacedName
+		var targetPort int32
+		found := false
+		for _, rule := range matchedRoute.Spec.Rules {
+			for _, backendRef := range rule.BackendRefs {
+				if backendRef.Group != nil && *backendRef.Group == "inference.networking.k8s.io" &&
+					backendRef.Kind != nil && *backendRef.Kind == "InferencePool" {
+					inferencePoolName.Namespace = matchedRoute.Namespace
+					if backendRef.Namespace != nil {
+						inferencePoolName.Namespace = string(*backendRef.Namespace)
+					}
+					inferencePoolName.Name = string(backendRef.Name)
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+
+		if !found {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "No InferencePool backendRef found"})
+			return
+		}
+
+		// Get InferencePool
+		ipKey := fmt.Sprintf("%s/%s", inferencePoolName.Namespace, inferencePoolName.Name)
+		ipObj := lm.store.GetInferencePool(ipKey)
+		if ipObj == nil {
+			c.JSON(http.StatusNotFound, gin.H{"message": "InferencePool not found"})
+			return
+		}
+		ip, ok := ipObj.(*inferencev1.InferencePool)
+		if !ok || ip == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "Invalid InferencePool object"})
+			return
+		}
+		if ip.Spec.TargetPorts == nil || len(ip.Spec.TargetPorts) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "No target port configured"})
+			return
+		}
+		if ip.Spec.TargetPorts[0].Number == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid target port number"})
+			return
+		}
+
+		// Get target port
+		targetPort = int32(ip.Spec.TargetPorts[0].Number)
+
+		// Get pods from InferencePool
+		pods, err := lm.store.GetPodsByInferencePool(inferencePoolName)
+		if err != nil || len(pods) == 0 {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"message": "No pods available"})
+			return
+		}
+
+		// Simple round-robin selection for now
+		// TODO: Use scheduler for intelligent pod selection
+		if len(pods) == 0 {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"message": "No pods available"})
+			return
+		}
+
+		selectedPod := pods[0].Pod
+		podIP := selectedPod.Status.PodIP
+		if podIP == "" {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"message": "Pod IP not available"})
+			return
+		}
+
+		// Simple HTTP proxy
+		targetURL := fmt.Sprintf("http://%s:%d%s", podIP, targetPort, c.Request.URL.Path)
+		client := &http.Client{Timeout: 30 * time.Second}
+		req, err := http.NewRequest(c.Request.Method, targetURL, c.Request.Body)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+			return
+		}
+
+		for key, values := range c.Request.Header {
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"message": err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		for key, values := range resp.Header {
+			for _, value := range values {
+				c.Writer.Header().Add(key, value)
+			}
+		}
+		c.Writer.WriteHeader(resp.StatusCode)
+		io.Copy(c.Writer, resp.Body)
 	}
 }

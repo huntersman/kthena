@@ -32,6 +32,8 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"istio.io/istio/pkg/util/sets"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -39,6 +41,7 @@ import (
 	aiv1alpha1 "github.com/volcano-sh/kthena/pkg/apis/networking/v1alpha1"
 	"github.com/volcano-sh/kthena/pkg/kthena-router/backend"
 	"github.com/volcano-sh/kthena/pkg/kthena-router/utils"
+	inferencev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 )
 
 var (
@@ -183,6 +186,20 @@ type Store interface {
 	GetGatewaysByNamespace(namespace string) []*gatewayv1.Gateway
 	GetAllGateways() []*gatewayv1.Gateway
 
+	// InferencePool methods (using Gateway API Inference Extension)
+	AddOrUpdateInferencePool(inferencePool interface{}) error
+	DeleteInferencePool(key string) error
+	GetInferencePool(key string) interface{}
+	GetAllInferencePools() []interface{}
+	GetPodsByInferencePool(name types.NamespacedName) ([]*PodInfo, error)
+
+	// HTTPRoute methods (using standard Gateway API)
+	AddOrUpdateHTTPRoute(httpRoute interface{}) error
+	DeleteHTTPRoute(key string) error
+	GetHTTPRoute(key string) interface{}
+	GetAllHTTPRoutes() []interface{}
+	GetHTTPRoutesByGateway(gatewayKey string) []interface{}
+
 	// Debug interface methods
 	GetAllModelRoutes() map[string]*aiv1alpha1.ModelRoute
 	GetAllModelServers() map[types.NamespacedName]*aiv1alpha1.ModelServer
@@ -241,6 +258,14 @@ type store struct {
 	gatewayMutex sync.RWMutex
 	gateways     map[string]*gatewayv1.Gateway // key: namespace/name, value: *gatewayv1.Gateway
 
+	// InferencePool fields (using Gateway API Inference Extension)
+	inferencePoolMutex sync.RWMutex
+	inferencePools     map[string]*inferencev1.InferencePool // key: namespace/name, value: *inferencev1.InferencePool
+
+	// HTTPRoute fields (using standard Gateway API)
+	httpRouteMutex sync.RWMutex
+	httpRoutes     map[string]*gatewayv1.HTTPRoute // key: namespace/name, value: *gatewayv1.HTTPRoute
+	gatewayRoutes  map[string]sets.Set[string]     // key: gateway key (namespace/name), value: set of HTTPRoute keys
 	// New fields for callback management
 	callbacks map[string][]CallbackFunc
 
@@ -259,6 +284,9 @@ func New() Store {
 		routes:              make(map[string][]*aiv1alpha1.ModelRoute),
 		loraRoutes:          make(map[string][]*aiv1alpha1.ModelRoute),
 		gateways:            make(map[string]*gatewayv1.Gateway),
+		inferencePools:      make(map[string]*inferencev1.InferencePool),
+		httpRoutes:          make(map[string]*gatewayv1.HTTPRoute),
+		gatewayRoutes:       make(map[string]sets.Set[string]),
 		callbacks:           make(map[string][]CallbackFunc),
 		initialSynced:       &atomic.Bool{},
 		requestWaitingQueue: sync.Map{},
@@ -1290,6 +1318,177 @@ func (s *store) GetAllGateways() []*gatewayv1.Gateway {
 	var result []*gatewayv1.Gateway
 	for _, gateway := range s.gateways {
 		result = append(result, gateway)
+	}
+	return result
+}
+
+// InferencePool methods (using Gateway API Inference Extension)
+
+func (s *store) AddOrUpdateInferencePool(inferencePool interface{}) error {
+	ip, ok := inferencePool.(*inferencev1.InferencePool)
+	if !ok {
+		return fmt.Errorf("invalid inferencepool type: %T", inferencePool)
+	}
+
+	key := fmt.Sprintf("%s/%s", ip.ObjectMeta.Namespace, ip.ObjectMeta.Name)
+
+	s.inferencePoolMutex.Lock()
+	s.inferencePools[key] = ip
+	s.inferencePoolMutex.Unlock()
+
+	klog.V(4).Infof("Added or updated InferencePool: %s", key)
+	return nil
+}
+
+func (s *store) DeleteInferencePool(key string) error {
+	s.inferencePoolMutex.Lock()
+	delete(s.inferencePools, key)
+	s.inferencePoolMutex.Unlock()
+
+	klog.V(4).Infof("Deleted InferencePool: %s", key)
+	return nil
+}
+
+func (s *store) GetInferencePool(key string) interface{} {
+	s.inferencePoolMutex.RLock()
+	defer s.inferencePoolMutex.RUnlock()
+
+	return s.inferencePools[key]
+}
+
+func (s *store) GetAllInferencePools() []interface{} {
+	s.inferencePoolMutex.RLock()
+	defer s.inferencePoolMutex.RUnlock()
+
+	var result []interface{}
+	for _, inferencePool := range s.inferencePools {
+		result = append(result, inferencePool)
+	}
+	return result
+}
+
+func (s *store) GetPodsByInferencePool(name types.NamespacedName) ([]*PodInfo, error) {
+	key := fmt.Sprintf("%s/%s", name.Namespace, name.Name)
+
+	s.inferencePoolMutex.RLock()
+	ip, exists := s.inferencePools[key]
+	s.inferencePoolMutex.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("inferencepool not found: %v", name)
+	}
+
+	// Convert LabelSelector to metav1.LabelSelector for compatibility
+	matchLabels := make(map[string]string)
+	for k, v := range ip.Spec.Selector.MatchLabels {
+		matchLabels[string(k)] = string(v)
+	}
+	labelSelector := &metav1.LabelSelector{
+		MatchLabels: matchLabels,
+	}
+	selector, err := metav1.LabelSelectorAsSelector(labelSelector)
+	if err != nil {
+		return nil, fmt.Errorf("invalid selector: %w", err)
+	}
+
+	var pods []*PodInfo
+	s.pods.Range(func(key, value interface{}) bool {
+		podInfo := value.(*PodInfo)
+		if podInfo.Pod.Namespace == name.Namespace && selector.Matches(labels.Set(podInfo.Pod.Labels)) {
+			pods = append(pods, podInfo)
+		}
+		return true
+	})
+
+	return pods, nil
+}
+
+// HTTPRoute methods (using standard Gateway API)
+
+func (s *store) AddOrUpdateHTTPRoute(httpRoute interface{}) error {
+	hr, ok := httpRoute.(*gatewayv1.HTTPRoute)
+	if !ok {
+		return fmt.Errorf("invalid httproute type: %T", httpRoute)
+	}
+
+	key := fmt.Sprintf("%s/%s", hr.Namespace, hr.Name)
+
+	s.httpRouteMutex.Lock()
+	s.httpRoutes[key] = hr
+
+	// Update gateway routes mapping
+	for _, parentRef := range hr.Spec.ParentRefs {
+		if parentRef.Kind != nil && *parentRef.Kind == "Gateway" {
+			gatewayName := string(parentRef.Name)
+			gatewayNamespace := hr.Namespace
+			if parentRef.Namespace != nil {
+				gatewayNamespace = string(*parentRef.Namespace)
+			}
+			gatewayKey := fmt.Sprintf("%s/%s", gatewayNamespace, gatewayName)
+
+			if s.gatewayRoutes[gatewayKey] == nil {
+				s.gatewayRoutes[gatewayKey] = sets.New[string]()
+			}
+			s.gatewayRoutes[gatewayKey].Insert(key)
+		}
+	}
+
+	s.httpRouteMutex.Unlock()
+
+	klog.V(4).Infof("Added or updated HTTPRoute: %s", key)
+	return nil
+}
+
+func (s *store) DeleteHTTPRoute(key string) error {
+	s.httpRouteMutex.Lock()
+	_, exists := s.httpRoutes[key]
+	if exists {
+		// Remove from gateway routes mapping
+		for gatewayKey, routeSet := range s.gatewayRoutes {
+			routeSet.Delete(key)
+			if routeSet.IsEmpty() {
+				delete(s.gatewayRoutes, gatewayKey)
+			}
+		}
+		delete(s.httpRoutes, key)
+	}
+	s.httpRouteMutex.Unlock()
+
+	if exists {
+		klog.V(4).Infof("Deleted HTTPRoute: %s", key)
+	}
+	return nil
+}
+
+func (s *store) GetHTTPRoute(key string) interface{} {
+	s.httpRouteMutex.RLock()
+	defer s.httpRouteMutex.RUnlock()
+
+	return s.httpRoutes[key]
+}
+
+func (s *store) GetAllHTTPRoutes() []interface{} {
+	s.httpRouteMutex.RLock()
+	defer s.httpRouteMutex.RUnlock()
+
+	var result []interface{}
+	for _, httpRoute := range s.httpRoutes {
+		result = append(result, httpRoute)
+	}
+	return result
+}
+
+func (s *store) GetHTTPRoutesByGateway(gatewayKey string) []interface{} {
+	s.httpRouteMutex.RLock()
+	defer s.httpRouteMutex.RUnlock()
+
+	var result []interface{}
+	if routeSet, exists := s.gatewayRoutes[gatewayKey]; exists {
+		for routeKey := range routeSet {
+			if hr, ok := s.httpRoutes[routeKey]; ok {
+				result = append(result, hr)
+			}
+		}
 	}
 	return result
 }
