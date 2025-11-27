@@ -59,7 +59,9 @@ _Appears in:_
 
 
 
-AutoscalingPolicyBinding is the Schema for the autoscalingpolicybindings API.
+AutoscalingPolicyBinding binds AutoscalingPolicy rules to specific ModelServing deployments,
+enabling either traditional metric-based scaling or multi-target optimization across
+heterogeneous hardware deployments.
 
 
 
@@ -78,7 +80,7 @@ _Appears in:_
 
 
 
-AutoscalingPolicyBindingList contains a list of AutoscalingPolicyBinding.
+AutoscalingPolicyBindingList contains a list of AutoscalingPolicyBinding objects.
 
 
 
@@ -104,16 +106,16 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `policyRef` _[LocalObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#localobjectreference-v1-core)_ | PolicyRef references the autoscaling policy to be optimized scaling base on multiple targets. |  |  |
-| `optimizerConfiguration` _[OptimizerConfiguration](#optimizerconfiguration)_ | It dynamically adjusts replicas across different ModelServing objects based on overall computing power requirements - referred to as "optimize" behavior in the code.<br />For example:<br />When dealing with two types of ModelServing objects corresponding to heterogeneous hardware resources with different computing capabilities (e.g., H100/A100), the "optimize" behavior aims to:<br />Dynamically adjust the deployment ratio of H100/A100 instances based on real-time computing power demands<br />Use integer programming and similar methods to precisely meet computing requirements<br />Maximize hardware utilization efficiency |  |  |
-| `scalingConfiguration` _[ScalingConfiguration](#scalingconfiguration)_ | Adjust the number of related instances based on specified monitoring metrics and their target values. |  |  |
+| `policyRef` _[LocalObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#localobjectreference-v1-core)_ | PolicyRef references the AutoscalingPolicy that defines the scaling rules and metrics. |  |  |
+| `optimizerConfiguration` _[OptimizerConfiguration](#optimizerconfiguration)_ | OptimizerConfiguration enables multi-target optimization that dynamically allocates<br />replicas across heterogeneous ModelServing deployments based on overall compute requirements.<br />This is ideal for mixed hardware environments (e.g., H100/A100 clusters) where you want to<br />optimize resource utilization by adjusting deployment ratios between different hardware types<br />using mathematical optimization methods (e.g. integer programming). |  |  |
+| `scalingConfiguration` _[ScalingConfiguration](#scalingconfiguration)_ | ScalingConfiguration defines traditional autoscaling behavior that adjusts replica counts<br />based on monitoring metrics and target values for a single ModelServing deployment. |  |  |
 
 
 #### AutoscalingPolicyBindingStatus
 
 
 
-AutoscalingPolicyBindingStatus defines the status of a autoscaling policy binding.
+AutoscalingPolicyBindingStatus defines the observed state of AutoscalingPolicyBinding.
 
 
 
@@ -298,7 +300,7 @@ _Appears in:_
 
 
 
-
+MetricEndpoint defines the endpoint configuration for scraping metrics from pods.
 
 
 
@@ -307,8 +309,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `uri` _string_ | The metric uri, e.g. /metrics | /metrics |  |
-| `port` _integer_ | The port of pods exposing metric endpoints | 8100 |  |
+| `uri` _string_ | URI is the path where metrics are exposed (e.g., "/metrics"). | /metrics |  |
+| `port` _integer_ | Port is the network port where metrics are exposed by the pods. | 8100 |  |
 
 
 #### ModelBackend
@@ -580,7 +582,8 @@ _Appears in:_
 
 
 
-
+OptimizerConfiguration defines parameters for multi-target optimization across
+multiple ModelServing deployments with different hardware characteristics.
 
 
 
@@ -589,15 +592,15 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `params` _[OptimizerParam](#optimizerparam) array_ | Parameters of multiple Model Serving Groups to be optimized. |  | MinItems: 1 <br /> |
-| `costExpansionRatePercent` _integer_ | CostExpansionRatePercent is the percentage rate at which the cost expands. | 200 | Minimum: 0 <br /> |
+| `params` _[OptimizerParam](#optimizerparam) array_ | Params contains the optimization parameters for each ModelServing group.<br />Each entry defines a different deployment type (e.g., different hardware) to optimize. |  | MinItems: 1 <br /> |
+| `costExpansionRatePercent` _integer_ | CostExpansionRatePercent defines the acceptable cost expansion percentage<br />when optimizing across multiple deployment types. A higher value allows more<br />flexibility in resource allocation but may increase overall costs. | 200 | Minimum: 0 <br /> |
 
 
 #### OptimizerParam
 
 
 
-
+OptimizerParam defines optimization parameters for a specific ModelServing deployment type.
 
 
 
@@ -606,10 +609,10 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `target` _[Target](#target)_ | The scaling instance configuration |  |  |
-| `cost` _integer_ | Cost is the cost associated with running this backend. |  | Minimum: 0 <br /> |
-| `minReplicas` _integer_ | MinReplicas is the minimum number of replicas for the backend. |  | Maximum: 1e+06 <br />Minimum: 0 <br /> |
-| `maxReplicas` _integer_ | MaxReplicas is the maximum number of replicas for the backend. |  | Maximum: 1e+06 <br />Minimum: 1 <br /> |
+| `target` _[Target](#target)_ | Target specifies the ModelServing deployment and its monitoring configuration. |  |  |
+| `cost` _integer_ | Cost represents the relative cost factor for this deployment type.<br />Used in optimization calculations to balance performance vs. cost. |  | Minimum: 0 <br /> |
+| `minReplicas` _integer_ | MinReplicas is the minimum number of replicas to maintain for this deployment type. |  | Maximum: 1e+06 <br />Minimum: 0 <br /> |
+| `maxReplicas` _integer_ | MaxReplicas is the maximum number of replicas allowed for this deployment type. |  | Maximum: 1e+06 <br />Minimum: 1 <br /> |
 
 
 #### PodTemplateSpec
@@ -723,7 +726,7 @@ _Appears in:_
 
 
 
-
+ScalingConfiguration defines the scaling parameters for a single target deployment.
 
 
 
@@ -732,9 +735,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `target` _[Target](#target)_ | Target represents the objects be monitored and scaled. |  |  |
-| `minReplicas` _integer_ | MinReplicas is the minimum number of replicas. |  | Maximum: 1e+06 <br />Minimum: 0 <br /> |
-| `maxReplicas` _integer_ | MaxReplicas is the maximum number of replicas. |  | Maximum: 1e+06 <br />Minimum: 1 <br /> |
+| `target` _[Target](#target)_ | Target specifies the ModelServing deployment to monitor and scale. |  |  |
+| `minReplicas` _integer_ | MinReplicas is the minimum number of replicas to maintain. |  | Maximum: 1e+06 <br />Minimum: 0 <br /> |
+| `maxReplicas` _integer_ | MaxReplicas is the maximum number of replicas allowed. |  | Maximum: 1e+06 <br />Minimum: 1 <br /> |
 
 
 #### SelectPolicyType
@@ -778,7 +781,7 @@ _Appears in:_
 
 
 
-
+Target defines a ModelServing deployment that can be monitored and scaled.
 
 
 
@@ -788,9 +791,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `targetRef` _[ObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectreference-v1-core)_ | TargetRef references the target object. |  |  |
-| `additionalMatchLabels` _object (keys:string, values:string)_ | AdditionalMatchLabels is the additional labels to match the target object. |  |  |
-| `metricEndpoint` _[MetricEndpoint](#metricendpoint)_ | MetricEndpoint is the metric source. |  |  |
+| `targetRef` _[ObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectreference-v1-core)_ | TargetRef references the ModelServing object to monitor and scale. |  |  |
+| `additionalMatchLabels` _object (keys:string, values:string)_ | AdditionalMatchLabels provides additional label selectors to refine<br />which pods within the ModelServing deployment should be monitored. |  |  |
+| `metricEndpoint` _[MetricEndpoint](#metricendpoint)_ | MetricEndpoint configures how to scrape metrics from the target pods.<br />If not specified, defaults to port 8100 and path "/metrics". |  |  |
 
 
 #### TopologySpreadConstraint
