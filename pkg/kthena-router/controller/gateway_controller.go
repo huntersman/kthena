@@ -66,13 +66,25 @@ func NewGatewayController(
 		store:         store,
 	}
 
-	controller.registration, _ = gatewayInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: controller.enqueueGateway,
-		UpdateFunc: func(old, new interface{}) {
-			controller.enqueueGateway(new)
+	// Filter handler to only process Gateways that reference the kthena-router GatewayClass
+	filterHandler := &cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			gateway, ok := obj.(*gatewayv1.Gateway)
+			if !ok {
+				return false
+			}
+			return string(gateway.Spec.GatewayClassName) == DefaultGatewayClassName
 		},
-		DeleteFunc: controller.enqueueGateway,
-	})
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc: controller.enqueueGateway,
+			UpdateFunc: func(old, new interface{}) {
+				controller.enqueueGateway(new)
+			},
+			DeleteFunc: controller.enqueueGateway,
+		},
+	}
+
+	controller.registration, _ = gatewayInformer.Informer().AddEventHandler(filterHandler)
 
 	return controller
 }
@@ -155,12 +167,6 @@ func (c *GatewayController) syncHandler(key string) error {
 		return err
 	}
 
-	// Only process Gateways that reference the kthena-router GatewayClass
-	if string(gateway.Spec.GatewayClassName) != DefaultGatewayClassName {
-		klog.V(4).Infof("Skipping Gateway %s/%s: does not reference %s GatewayClass", namespace, name, DefaultGatewayClassName)
-		return nil
-	}
-
 	// Store the Gateway
 	if err := c.store.AddOrUpdateGateway(gateway); err != nil {
 		return err
@@ -187,17 +193,6 @@ func (c *GatewayController) ensureGatewayService(gateway *gatewayv1.Gateway) err
 			Port:     int32(listener.Port),
 			Protocol: corev1.ProtocolTCP,
 		})
-	}
-
-	// If no listeners, use default port
-	if len(ports) == 0 {
-		ports = []corev1.ServicePort{
-			{
-				Name:     "http",
-				Port:     80,
-				Protocol: corev1.ProtocolTCP,
-			},
-		}
 	}
 
 	// Set APIVersion and Kind explicitly for OwnerReference

@@ -92,7 +92,6 @@ func (s *Server) startDefaultServer(ctx context.Context, router *router.Router, 
 	engine := gin.New()
 	engine.Use(gin.LoggerWithWriter(gin.DefaultWriter, "/healthz", "/readyz", "/metrics"), gin.Recovery())
 
-	// Default endpoints (no auth/access log middleware)
 	engine.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "ok",
@@ -205,11 +204,6 @@ func (lm *ListenerManager) StartListenersForGateway(gateway *gatewayv1.Gateway) 
 	for _, listener := range gateway.Spec.Listeners {
 		listenerKey := fmt.Sprintf("%s/%s", gatewayKey, string(listener.Name))
 
-		// Skip if already running
-		if _, exists := lm.listeners[listenerKey]; exists {
-			continue
-		}
-
 		engine := gin.New()
 		engine.Use(gin.Recovery())
 
@@ -257,15 +251,12 @@ func (lm *ListenerManager) StartListenersForGateway(gateway *gatewayv1.Gateway) 
 		go func(name string, p int32, proto string, srv *http.Server, ctx context.Context) {
 			klog.Infof("Starting Gateway listener %s on port %d with protocol %s for /v1/*path", name, p, proto)
 			var err error
-			if proto == string(gatewayv1.HTTPSProtocolType) {
-				if lm.server.EnableTLS && lm.server.TLSCertFile != "" && lm.server.TLSKeyFile != "" {
-					err = srv.ListenAndServeTLS(lm.server.TLSCertFile, lm.server.TLSKeyFile)
-				} else {
-					klog.Errorf("HTTPS listener %s requires TLS configuration", name)
-					return
-				}
-			} else {
+			if proto == string(gatewayv1.HTTPProtocolType) {
 				err = srv.ListenAndServe()
+			} else {
+				// TODO: Support other protocols (HTTPS, TCP, UDP, TLS, etc.)
+				klog.Errorf("Unsupported protocol %s for listener %s, only HTTP is supported", proto, name)
+				return
 			}
 			if err != nil && err != http.ErrServerClosed {
 				klog.Errorf("listen failed for listener %s: %v", name, err)

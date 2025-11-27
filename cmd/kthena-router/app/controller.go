@@ -17,10 +17,16 @@ limitations under the License.
 package app
 
 import (
+	"context"
+	"fmt"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayclientset "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned"
 	gatewayinformers "sigs.k8s.io/gateway-api/pkg/client/informers/externalversions"
 
@@ -89,9 +95,13 @@ func startControllers(store datastore.Store, stop <-chan struct{}, enableGateway
 			klog.Fatalf("Error building gateway clientset: %s", err.Error())
 		}
 
+		// Ensure default GatewayClass exists before starting controllers
+		if err := ensureDefaultGatewayClass(gatewayClient); err != nil {
+			klog.Fatalf("Failed to ensure default GatewayClass: %s", err.Error())
+		}
+
 		gatewayInformerFactory := gatewayinformers.NewSharedInformerFactory(gatewayClient, 0)
 		gatewayController := controller.NewGatewayController(gatewayInformerFactory, kubeClient, store)
-		gatewayClassController := controller.NewGatewayClassController(gatewayClient, store)
 
 		gatewayInformerFactory.Start(stop)
 
@@ -101,13 +111,7 @@ func startControllers(store datastore.Store, stop <-chan struct{}, enableGateway
 			}
 		}()
 
-		go func() {
-			if err := gatewayClassController.Run(stop); err != nil {
-				klog.Fatalf("Error running gateway class controller: %s", err.Error())
-			}
-		}()
-
-		controllers = append(controllers, gatewayController, gatewayClassController)
+		controllers = append(controllers, gatewayController)
 	} else {
 		klog.Info("Gateway API controllers are disabled")
 	}
@@ -124,4 +128,42 @@ func (c *aggregatedController) HasSynced() bool {
 		}
 	}
 	return true
+}
+
+// ensureDefaultGatewayClass creates the default GatewayClass if it doesn't exist
+func ensureDefaultGatewayClass(gatewayClient gatewayclientset.Interface) error {
+	ctx := context.Background()
+
+	// Check if GatewayClass already exists
+	_, err := gatewayClient.GatewayV1().GatewayClasses().Get(ctx, controller.DefaultGatewayClassName, metav1.GetOptions{})
+	if err == nil {
+		klog.V(2).Infof("Default GatewayClass %s already exists", controller.DefaultGatewayClassName)
+		return nil
+	}
+
+	if !apierrors.IsNotFound(err) {
+		return fmt.Errorf("failed to check GatewayClass %s: %w", controller.DefaultGatewayClassName, err)
+	}
+
+	// Create the default GatewayClass
+	gatewayClass := &gatewayv1.GatewayClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: controller.DefaultGatewayClassName,
+		},
+		Spec: gatewayv1.GatewayClassSpec{
+			ControllerName: gatewayv1.GatewayController(controller.ControllerName),
+		},
+	}
+
+	_, err = gatewayClient.GatewayV1().GatewayClasses().Create(ctx, gatewayClass, metav1.CreateOptions{})
+	if err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			klog.V(2).Infof("GatewayClass %s was created by another process", controller.DefaultGatewayClassName)
+			return nil
+		}
+		return fmt.Errorf("failed to create GatewayClass %s: %w", controller.DefaultGatewayClassName, err)
+	}
+
+	klog.Infof("Created default GatewayClass %s", controller.DefaultGatewayClassName)
+	return nil
 }
