@@ -588,10 +588,7 @@ func (c *ModelServingController) scaleUpServingGroups(ctx context.Context, mi *w
 			} else {
 				if should, _ := c.shouldUseBinPackStrategy(mi); should {
 					// During binpack scaledown processing, situations may arise where the group index exceeds the expected value.
-					// We address this by reducing the expected value.
-					for replicas[expectedCount-1] != nil {
-						expectedCount = expectedCount - 1
-					}
+					// If we find a ServingGroup Index greater than expectedReplicas, it means that the number of servingGroup we need to create has decreased by one.
 					expectedCount = expectedCount - 1
 				} else {
 					condemned = append(condemned, group)
@@ -863,10 +860,7 @@ func (c *ModelServingController) scaleUpRoles(ctx context.Context, mi *workloadv
 			} else {
 				if should, _ := c.shouldUseBinPackStrategy(mi); should {
 					// During binpack scaledown processing, situations may arise where the role index exceeds the expected value.
-					// We address this by reducing the expected value.
-					for replicas[expectedCount-1] != nil {
-						expectedCount = expectedCount - 1
-					}
+					// If we find a RoleID greater than expectedReplicas, it means that the number of Roles we need to create has decreased by one.
 					expectedCount = expectedCount - 1
 				} else {
 					condemned = append(condemned, role)

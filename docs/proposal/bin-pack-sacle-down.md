@@ -33,6 +33,11 @@ A good summary is probably at least a paragraph in length.
 When scaling down a `ServingGroup` or `Role`, the binpack score determines which pods should be evicted.
 This change will disrupt the existing logic that processes changes to `ServingGroup` and `Role` replicas in descending order by replica ID. This article will also explain how to minimize the impact on the original logic.
 
+- Handling Binpack Scaling for the servingGroup.
+- Handling Binpack Scaling for the Role.
+- How should PodGroup's update logic adapt to binpacking?
+- Explain the current limitations of MinTaskMember in PodGroup during role-level scaling.
+
 ### Motivation
 
 <!--
@@ -40,12 +45,18 @@ This section is for explicitly listing the motivation, goals, and non-goals of
 this proposal.  Describe why the change is important and the benefits to users.
 -->
 
+Binpack scaling down maximizes available node capacity to prepare for subsequent resource-intensive tasks. This approach addresses specific requirements in AI inference workloads.
+
 #### Goals
 
 <!--
 List the specific goals of the proposal. What is it trying to achieve? How will we
 know that this has succeeded?
 -->
+
+- Supports binpack scale down in specific scenarios without affecting other scaling capabilities.
+- In non-binpack scenarios, capacity scaling operations will continue to follow the previous processing logic.
+- The PodGroup update logic should adapt to binpacking.
 
 #### Non-Goals
 
@@ -143,6 +154,89 @@ For example:
 | Stage3 | ✅   || ✅   || After Scaling down |
 | Stage4 | ✅   | ⏳ | ✅ | ⏳ | Scale up 2 replicas. First create R-1. Then create R-3 |
 | Stage5 | ✅   | ✅ | ✅   | ✅   | After Scaling up |
+
+#### Impact of Binpacking on PodGroups
+
+Kthena supports gang scheduling and network topology scheduling using Volcano's `PodGroup`. For the `PodGroup` to function properly, updates to the `PodGroup` must precede updates to the actual pods.
+
+Previously, by performing scaling operations sequentially, it was possible to update `PodGroup` before pod updates within the cluster, ensuring consistency between the fields in `podGroup` and the actual resource status in the cluster.
+
+However, after enabling binpack support, we cannot determine which `servingGroup` or `Role` will be deleted before the actual scaling down operation. This means that during scaling down, the `PodGroup` update must occur after the scaling process is completed. Fortunately, `PodGroup` does not affect scale-down operations. Therefore, we can implement special handling for scale-down scenarios.
+
+**ServingGroup:**
+
+Handling `ServingGroup` is relatively straightforward. Since `ServingGroup` and `PodGroup` maintain a one-to-one correspondence, once the `ServingGroup` scale-down is complete, you can simply delete the corresponding `PodGroup`. The normal `podGroup manager` processing occurs before the `ServingGroup` scale-down operation. During this podGroup manager processing, when the existing `ServingGroup` count exceeds the expected `ServingGroup` replicas, all existing podGroups are updated to ensure correct podGroup behavior if role scaling occur at the same time.
+
+```go
+// Get the exist ServingGroups
+servingGroupList, err := m.store.GetServingGroupByModelServing(utils.GetNamespaceName(mi))
+
+// Changes to the PodGroup will not affect Pods that have already been deployed.
+// During binpack scale down, it is unknown which ServingGroup will be deleted.
+// Therefore, return all podGroup names that exist.
+// Delection of PodGroups is handled when ServingGroups are deleted.
+podGroupNameListlength := max(expectedReplicas, len(servingGroupNameList))
+nameList := make([]string, 0, podGroupNameListlength)
+for _, group := range servingGroupNameList {
+    _, index := utils.GetParentNameAndOrdinal(group.Name)
+    if index > podGroupNameListlength-1 {
+        nameList = append(nameList, group.Name)
+        podGroupNameListlength = podGroupNameListlength - 1
+    }
+}
+
+for i := 0; i < podGroupNameListlength; i++ {
+    nameList = append(nameList, utils.GenerateServingGroupName(mi.GetName(), i))
+}
+
+for _, pgName := range nameList {
+    // ... Process all podGroups in the nameList afterward ....
+}
+```
+
+In an upgrade scenario, determine the gap between the existing number of `ServingGroups` and the expected number. Then generate the required `podGroup` names in ascending order of priority.
+
+Since the final output will generate all `ServingGroup` names with an index less than the expected count, we only need to focus on existing `ServingGroups` where the index exceeds the expected count. First, we iterate through all existing `ServingGroups` to identify those with an index greater than the expected count, adding their names to the `nameList`. Then, we increment the expected count by one. Finally, we generate the required `ServingGroup` names.
+
+**Role:**
+
+Role replicas are represented by `MinTaskMember` within `PodGroup`. Since we cannot predict which `Role` will be deleted during binpack scaling down, we temporarily suspend PodGroup updates during scaling operations.
+
+```go
+// During scaling operations, podGroup does not affect scaling policies.
+// Under the binpack scaling strategy, it is unknown which role replicas will be deleted.
+// Therefore, no action is taken during scaling.
+// PodGroup will updated after the role completes scaling down.
+if len(roleList) > expectReplicas {
+    continue
+}
+```
+
+After each pod deletion completes, a `reconcile` will occurs. Therefore, once all pods requiring deletion within the cluster have been removed, the `len(roleList)` will match the `expectedReplicas`. Then update the MinTaskMember for the corresponding PodGroup. The logic for obtaining the RoleName is consistent with the previous logic for obtaining the ServingGroupName.
+
+#### The Limitations of PodGroup MinTaskMember
+
+Although we updated the `MinTaskMember` of the podGroup in the above explanation, the current MinTaskMember has certain limitations. For example, in the 1P1D scenario, the MinTaskMember of the podGroup is:
+
+```yaml
+minTaskMember
+  perfill-0: 1
+  decode-0: 1
+```
+
+When scale up to 2P2D, The `MinTaskMember` of the podGroup will updated:
+
+```yaml
+minTaskMember
+  perfill-0: 1
+  decode-0: 1
+  perfill-1: 1
+  decode-2: 1
+```
+
+But, the pods of `prefill-1` and `decode-1` created by modelServing will `Panding`. Because `PodGroup` does not track pods already running in the cluster. Under the updated `PodGroup`, all four instances of the pod must be deployed simultaneously for gang scheduling. Currently, only two instances have been requested for creation. Therefore, the pod remains in a pending state.
+
+This issue can be resolved by adding a [subGroupPolicy](https://github.com/volcano-sh/apis/pull/195) to the volcano PodGroup.
 
 #### Test Plan
 
