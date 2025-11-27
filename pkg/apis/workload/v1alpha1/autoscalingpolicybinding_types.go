@@ -117,13 +117,14 @@ type OptimizerParam struct {
 	MaxReplicas int32 `json:"maxReplicas"`
 }
 
-// AutoscalingPolicyBinding binds AutoscalingPolicy rules to specific ModelServing deployments,
-// enabling either traditional metric-based scaling or multi-target optimization across
-// heterogeneous hardware deployments.
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
 // +genclient
+
+// AutoscalingPolicyBinding binds AutoscalingPolicy rules to specific ModelServing deployments,
+// enabling either traditional metric-based scaling or multi-target optimization across
+// heterogeneous hardware deployments.
 type AutoscalingPolicyBinding struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
