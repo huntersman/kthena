@@ -46,7 +46,11 @@ const sidebars: SidebarsConfig = {
       items: [
         'user-guide/model-booster',
         'user-guide/multi-node-inference',
-        'user-guide/autoscaler',
+        {
+          type: 'doc',
+          label: 'Autoscaler',
+          id: 'user-guide/autoscaler',
+        },
         {
           type: 'category',
           label: 'Router',
