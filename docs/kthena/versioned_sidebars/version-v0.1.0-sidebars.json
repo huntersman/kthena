@@ -4,10 +4,7 @@
     {
       "type": "category",
       "label": "Getting Started",
-      "items": [
-        "getting-started/installation",
-        "getting-started/quick-start"
-      ]
+      "items": ["getting-started/installation", "getting-started/quick-start"]
     },
     {
       "type": "category",
@@ -66,11 +63,7 @@
     {
       "type": "category",
       "label": "General",
-      "items": [
-        "general/prometheus",
-        "general/cert-manager",
-        "general/faq"
-      ]
+      "items": ["general/cert-manager", "general/faq"]
     },
     {
       "type": "category",
@@ -85,10 +78,7 @@
     {
       "type": "category",
       "label": "Timeline",
-      "items": [
-        "timeline/roadmap",
-        "timeline/releases"
-      ]
+      "items": ["timeline/roadmap", "timeline/releases"]
     },
     {
       "type": "category",

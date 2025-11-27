@@ -78,7 +78,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'General',
-      items: ['general/prometheus', 'general/cert-manager', 'general/faq'],
+      items: ['general/cert-manager', 'general/faq'],
     },
     {
       type: 'category',
