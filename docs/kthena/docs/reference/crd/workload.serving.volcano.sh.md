@@ -257,7 +257,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `minRoleReplicas` _object (keys:string, values:integer)_ | MinRoleReplicas defines the minimum number of replicas required for each role<br />in gang scheduling. This map allows users to specify different<br />minimum replica requirements for different roles.<br />Key: role name<br />Value: minimum number of replicas required for that role |  |  |
+| `minRoleReplicas` _object (keys:string, values:integer)_ | MinRoleReplicas defines the minimum number of replicas required for each role<br />in gang scheduling. This map allows users to specify different<br />minimum replica requirements for different roles.<br />Notice: In practice, when determining the minTaskMember for a podGroup, it takes the minimum value between `MinRoleReplicas[role.Name]` and role.Replicas.<br />Key: role name<br />Value: minimum number of replicas required for that role |  |  |
 
 
 #### LoraAdapter

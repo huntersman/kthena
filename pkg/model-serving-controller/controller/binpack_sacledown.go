@@ -88,7 +88,7 @@ func (c *ModelServingController) calculateServingGroupScore(mi *workloadv1alpha1
 
 // shouldUseBinPackScaleDown checks if binpack scale down should be used.
 // Returns true if any pod under the ModelServing has the PodDeletionCostAnnotation.
-func (c *ModelServingController) shouldUseBinPackScaleDown(mi *workloadv1alpha1.ModelServing) (bool, error) {
+func (c *ModelServingController) shouldUseBinPackStrategy(mi *workloadv1alpha1.ModelServing) (bool, error) {
 	// Get all pods belonging to this ModelServing
 	selector := labels.SelectorFromSet(map[string]string{
 		workloadv1alpha1.ModelServingNameLabelKey: mi.Name,

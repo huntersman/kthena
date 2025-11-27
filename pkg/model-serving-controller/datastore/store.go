@@ -135,7 +135,7 @@ func (s *store) GetRoleList(modelServingName types.NamespacedName, groupName, ro
 		// If the roleName does not exist, return an empty list instead of an error
 		return []Role{}, nil
 	}
-	//
+
 	//Convert roles in map to a slice
 	roleSlice := make([]Role, 0, len(roleMap))
 	for _, role := range roleMap {

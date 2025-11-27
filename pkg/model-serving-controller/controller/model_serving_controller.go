@@ -114,7 +114,7 @@ func NewModelServingController(kubeClientSet kubernetes.Interface, modelServingC
 	c := &ModelServingController{
 		kubeClientSet:         kubeClientSet,
 		modelServingClient:    modelServingClient,
-		gangManager:           gangscheduling.NewManager(kubeClientSet, volcanoClient),
+		gangManager:           gangscheduling.NewManager(kubeClientSet, volcanoClient, store),
 		podsLister:            podsInformer.Lister(),
 		podsInformer:          podsInformer.Informer(),
 		servicesLister:        servicesInformer.Lister(),
@@ -586,7 +586,7 @@ func (c *ModelServingController) scaleUpServingGroups(ctx context.Context, mi *w
 				copyServingGroup := group
 				replicas[servingGroupOrdinal] = &copyServingGroup
 			} else {
-				if should, _ := c.shouldUseBinPackScaleDown(mi); should {
+				if should, _ := c.shouldUseBinPackStrategy(mi); should {
 					// During binpack scaledown processing, situations may arise where the group index exceeds the expected value.
 					// We address this by reducing the expected value.
 					for replicas[expectedCount-1] != nil {
@@ -626,7 +626,7 @@ func (c *ModelServingController) scaleUpServingGroups(ctx context.Context, mi *w
 // scaleDownServingGroups scales down the ServingGroups to the expected count.
 func (c *ModelServingController) scaleDownServingGroups(ctx context.Context, mi *workloadv1alpha1.ModelServing, servingGroupList []datastore.ServingGroup, expectedCount int) error {
 	// Calculate scores for all ServingGroups
-	var servingGroupScores []ServingGroupWithScore
+	servingGroupScores := make([]ServingGroupWithScore, 0, len(servingGroupList))
 
 	for _, group := range servingGroupList {
 		score, err := c.calculateServingGroupScore(mi, group.Name)
@@ -654,8 +654,9 @@ func (c *ModelServingController) scaleDownServingGroups(ctx context.Context, mi 
 
 	// Delete ServingGroups with the lowest scores
 	toDeleteCount := len(servingGroupList) - expectedCount
-	for i := 0; i < toDeleteCount && i < len(servingGroupScores); i++ {
+	for i := 0; i < toDeleteCount; i++ {
 		c.DeleteServingGroup(mi, servingGroupScores[i].Name)
+		c.gangManager.DeletePodGroupWhenServingGroupDeleted(ctx, mi, servingGroupScores[i].Name)
 	}
 
 	return nil
@@ -805,6 +806,8 @@ func (c *ModelServingController) scaleDownRoles(ctx context.Context, mi *workloa
 	var roleScores []RoleWithScore
 
 	for _, role := range roleList {
+		// Get score for each Role.
+		// If not set 'PodDelectionCost` annotation, the score is set to 0.
 		score, err := c.calculateRoleScore(mi, groupName, targetRole.Name, role.Name)
 		if err != nil {
 			klog.Errorf("Failed to calculate score for role %s: %v", role.Name, err)
@@ -838,9 +841,8 @@ func (c *ModelServingController) scaleDownRoles(ctx context.Context, mi *workloa
 
 	// Delete Roles with the lowest scores
 	toDeleteCount := len(roleList) - expectedCount
-	for i := 0; i < toDeleteCount && i < len(roleScores); i++ {
-		_, roleID := utils.GetParentNameAndOrdinal(roleScores[i].Name)
-		c.DeleteRole(ctx, mi, groupName, targetRole.Name, utils.GenerateRoleID(targetRole.Name, roleID))
+	for i := 0; i < toDeleteCount; i++ {
+		c.DeleteRole(ctx, mi, groupName, targetRole.Name, roleScores[i].Name)
 	}
 }
 
@@ -859,7 +861,7 @@ func (c *ModelServingController) scaleUpRoles(ctx context.Context, mi *workloadv
 				copy := role
 				replicas[roleOrdinal] = &copy
 			} else {
-				if should, _ := c.shouldUseBinPackScaleDown(mi); should {
+				if should, _ := c.shouldUseBinPackStrategy(mi); should {
 					// During binpack scaledown processing, situations may arise where the role index exceeds the expected value.
 					// We address this by reducing the expected value.
 					for replicas[expectedCount-1] != nil {
