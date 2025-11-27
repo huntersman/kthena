@@ -28,7 +28,16 @@ const LightboxImage: React.FC<LightboxImageProps> = ({
     if (svgRef.current && open) {
       const svgElement = svgRef.current.querySelector('svg');
       if (svgElement) {
-        const svgString = new XMLSerializer().serializeToString(svgElement);
+        // Clone the SVG to avoid modifying the original
+        const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
+        
+        // Apply dark mode styles if needed
+        if (colorMode === 'dark') {
+          // Apply dark mode styling to the cloned SVG
+          clonedSvg.style.filter = 'invert(1) hue-rotate(180deg)';
+        }
+        
+        const svgString = new XMLSerializer().serializeToString(clonedSvg);
         const blob = new Blob([svgString], { type: 'image/svg+xml' });
         const url = URL.createObjectURL(blob);
         setDataUrl(url);
@@ -38,7 +47,7 @@ const LightboxImage: React.FC<LightboxImageProps> = ({
         };
       }
     }
-  }, [open]);
+  }, [open, colorMode]);
 
   const commonStyle = { cursor: 'pointer', maxWidth: '100%', height: 'auto' };
 
