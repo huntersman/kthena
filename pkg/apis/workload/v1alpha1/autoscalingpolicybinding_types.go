@@ -24,81 +24,94 @@ import (
 // AutoscalingPolicyBindingSpec defines the desired state of AutoscalingPolicyBinding.
 // +kubebuilder:validation:XValidation:rule="has(self.optimizerConfiguration) != has(self.scalingConfiguration)",message="Either optimizerConfiguration or scalingConfiguration must be set, but not both."
 type AutoscalingPolicyBindingSpec struct {
-	// PolicyRef references the autoscaling policy to be optimized scaling base on multiple targets.
+	// PolicyRef references the AutoscalingPolicy that defines the scaling rules and metrics.
 	PolicyRef corev1.LocalObjectReference `json:"policyRef"`
 
-	// It dynamically adjusts replicas across different ModelServing objects based on overall computing power requirements - referred to as "optimize" behavior in the code.
-	// For example:
-	// When dealing with two types of ModelServing objects corresponding to heterogeneous hardware resources with different computing capabilities (e.g., H100/A100), the "optimize" behavior aims to:
-	// Dynamically adjust the deployment ratio of H100/A100 instances based on real-time computing power demands
-	// Use integer programming and similar methods to precisely meet computing requirements
-	// Maximize hardware utilization efficiency
+	// OptimizerConfiguration enables multi-target optimization that dynamically allocates
+	// replicas across heterogeneous ModelServing deployments based on overall compute requirements.
+	// This is ideal for mixed hardware environments (e.g., H100/A100 clusters) where you want to
+	// optimize resource utilization by adjusting deployment ratios between different hardware types
+	// using mathematical optimization methods (e.g. integer programming).
 	OptimizerConfiguration *OptimizerConfiguration `json:"optimizerConfiguration,omitempty"`
 
-	// Adjust the number of related instances based on specified monitoring metrics and their target values.
+	// ScalingConfiguration defines traditional autoscaling behavior that adjusts replica counts
+	// based on monitoring metrics and target values for a single ModelServing deployment.
 	ScalingConfiguration *ScalingConfiguration `json:"scalingConfiguration,omitempty"`
 }
 
+// AutoscalingTargetType defines the type of target for autoscaling operations.
 type AutoscalingTargetType string
 
+// MetricEndpoint defines the endpoint configuration for scraping metrics from pods.
 type MetricEndpoint struct {
-	// The metric uri, e.g. /metrics
+	// URI is the path where metrics are exposed (e.g., "/metrics").
 	// +optional
 	// +kubebuilder:default="/metrics"
 	Uri string `json:"uri,omitempty"`
-	// The port of pods exposing metric endpoints
+	// Port is the network port where metrics are exposed by the pods.
 	// +optional
 	// +kubebuilder:default=8100
 	Port int32 `json:"port,omitempty"`
 }
 
+// ScalingConfiguration defines the scaling parameters for a single target deployment.
 type ScalingConfiguration struct {
-	// Target represents the objects be monitored and scaled.
+	// Target specifies the ModelServing deployment to monitor and scale.
 	Target Target `json:"target,omitempty"`
-	// MinReplicas is the minimum number of replicas.
+	// MinReplicas is the minimum number of replicas to maintain.
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=1000000
 	MinReplicas int32 `json:"minReplicas"`
-	// MaxReplicas is the maximum number of replicas.
+	// MaxReplicas is the maximum number of replicas allowed.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=1000000
 	MaxReplicas int32 `json:"maxReplicas"`
 }
 
+// OptimizerConfiguration defines parameters for multi-target optimization across
+// multiple ModelServing deployments with different hardware characteristics.
 type OptimizerConfiguration struct {
-	// Parameters of multiple Model Serving Groups to be optimized.
+	// Params contains the optimization parameters for each ModelServing group.
+	// Each entry defines a different deployment type (e.g., different hardware) to optimize.
 	// +kubebuilder:validation:MinItems=1
 	Params []OptimizerParam `json:"params,omitempty"`
-	// CostExpansionRatePercent is the percentage rate at which the cost expands.
+	// CostExpansionRatePercent defines the acceptable cost expansion percentage
+	// when optimizing across multiple deployment types. A higher value allows more
+	// flexibility in resource allocation but may increase overall costs.
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:default=200
 	// +optional
 	CostExpansionRatePercent int32 `json:"costExpansionRatePercent,omitempty"`
 }
 
+// Target defines a ModelServing deployment that can be monitored and scaled.
 type Target struct {
-	// TargetRef references the target object.
+	// TargetRef references the ModelServing object to monitor and scale.
 	TargetRef corev1.ObjectReference `json:"targetRef"`
-	// AdditionalMatchLabels is the additional labels to match the target object.
+	// AdditionalMatchLabels provides additional label selectors to refine
+	// which pods within the ModelServing deployment should be monitored.
 	// +optional
 	AdditionalMatchLabels map[string]string `json:"additionalMatchLabels,omitempty"`
-	// MetricEndpoint is the metric source.
+	// MetricEndpoint configures how to scrape metrics from the target pods.
+	// If not specified, defaults to port 8100 and path "/metrics".
 	// +optional
 	MetricEndpoint MetricEndpoint `json:"metricEndpoint,omitempty"`
 }
 
+// OptimizerParam defines optimization parameters for a specific ModelServing deployment type.
 type OptimizerParam struct {
-	// The scaling instance configuration
+	// Target specifies the ModelServing deployment and its monitoring configuration.
 	Target Target `json:"target,omitempty"`
-	// Cost is the cost associated with running this backend.
+	// Cost represents the relative cost factor for this deployment type.
+	// Used in optimization calculations to balance performance vs. cost.
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	Cost int32 `json:"cost,omitempty"`
-	// MinReplicas is the minimum number of replicas for the backend.
+	// MinReplicas is the minimum number of replicas to maintain for this deployment type.
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=1000000
 	MinReplicas int32 `json:"minReplicas"`
-	// MaxReplicas is the maximum number of replicas for the backend.
+	// MaxReplicas is the maximum number of replicas allowed for this deployment type.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=1000000
 	MaxReplicas int32 `json:"maxReplicas"`
@@ -109,7 +122,9 @@ type OptimizerParam struct {
 // +kubebuilder:storageversion
 // +genclient
 
-// AutoscalingPolicyBinding is the Schema for the autoscalingpolicybindings API.
+// AutoscalingPolicyBinding binds AutoscalingPolicy rules to specific ModelServing deployments,
+// enabling either traditional metric-based scaling or multi-target optimization across
+// heterogeneous hardware deployments.
 type AutoscalingPolicyBinding struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -118,13 +133,13 @@ type AutoscalingPolicyBinding struct {
 	Status AutoscalingPolicyBindingStatus `json:"status,omitempty"`
 }
 
-// AutoscalingPolicyBindingStatus defines the status of a autoscaling policy binding.
+// AutoscalingPolicyBindingStatus defines the observed state of AutoscalingPolicyBinding.
 type AutoscalingPolicyBindingStatus struct {
 }
 
 // +kubebuilder:object:root=true
 
-// AutoscalingPolicyBindingList contains a list of AutoscalingPolicyBinding.
+// AutoscalingPolicyBindingList contains a list of AutoscalingPolicyBinding objects.
 type AutoscalingPolicyBindingList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

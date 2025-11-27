@@ -45,13 +45,23 @@ const sidebars: SidebarsConfig = {
       },
       items: [
         'user-guide/model-booster',
-        'user-guide/router-routing',
         'user-guide/multi-node-inference',
-        'user-guide/config-router',
-        'user-guide/autoscaler',
-        'user-guide/rate-limit',
-        'user-guide/runtime',
+        {
+          type: 'doc',
+          label: 'Autoscaler',
+          id: 'user-guide/autoscaler',
+        },
+        {
+          type: 'category',
+          label: 'Router',
+          items: [
+            'user-guide/router-routing',
+            'user-guide/config-router',
+            'user-guide/rate-limit',
+          ],
+        },
         'user-guide/gateway-inference-extension-support',
+        'user-guide/runtime',
         {
           type: 'category',
           label: 'Prefill Decode Disaggregation',
@@ -68,7 +78,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'General',
-      items: ['general/prometheus', 'general/cert-manager', 'general/faq'],
+      items: ['general/cert-manager', 'general/faq'],
     },
     {
       type: 'category',

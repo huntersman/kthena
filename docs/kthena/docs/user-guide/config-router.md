@@ -53,7 +53,7 @@ Authentication configuration is used to enable and configure JWT authentication.
 
 Here's a complete ConfigMap example showing how to configure the scheduler:
 
-```yaml
+```yaml showLineNumbers
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -98,7 +98,7 @@ data:
 
 If you want to use Authentication feature of router. Here is an example:
 
-```yaml
+```yaml showLineNumbers
 apiVersion: v1
 kind: ConfigMap
 metadata:

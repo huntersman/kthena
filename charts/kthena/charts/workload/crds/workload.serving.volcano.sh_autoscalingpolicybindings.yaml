@@ -17,8 +17,10 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: AutoscalingPolicyBinding is the Schema for the autoscalingpolicybindings
-          API.
+        description: |-
+          AutoscalingPolicyBinding binds AutoscalingPolicy rules to specific ModelServing deployments,
+          enabling either traditional metric-based scaling or multi-target optimization across
+          heterogeneous hardware deployments.
         properties:
           apiVersion:
             description: |-
@@ -43,69 +45,81 @@ spec:
             properties:
               optimizerConfiguration:
                 description: |-
-                  It dynamically adjusts replicas across different ModelServing objects based on overall computing power requirements - referred to as "optimize" behavior in the code.
-                  For example:
-                  When dealing with two types of ModelServing objects corresponding to heterogeneous hardware resources with different computing capabilities (e.g., H100/A100), the "optimize" behavior aims to:
-                  Dynamically adjust the deployment ratio of H100/A100 instances based on real-time computing power demands
-                  Use integer programming and similar methods to precisely meet computing requirements
-                  Maximize hardware utilization efficiency
+                  OptimizerConfiguration enables multi-target optimization that dynamically allocates
+                  replicas across heterogeneous ModelServing deployments based on overall compute requirements.
+                  This is ideal for mixed hardware environments (e.g., H100/A100 clusters) where you want to
+                  optimize resource utilization by adjusting deployment ratios between different hardware types
+                  using mathematical optimization methods (e.g. integer programming).
                 properties:
                   costExpansionRatePercent:
                     default: 200
-                    description: CostExpansionRatePercent is the percentage rate at
-                      which the cost expands.
+                    description: |-
+                      CostExpansionRatePercent defines the acceptable cost expansion percentage
+                      when optimizing across multiple deployment types. A higher value allows more
+                      flexibility in resource allocation but may increase overall costs.
                     format: int32
                     minimum: 0
                     type: integer
                   params:
-                    description: Parameters of multiple Model Serving Groups to be
-                      optimized.
+                    description: |-
+                      Params contains the optimization parameters for each ModelServing group.
+                      Each entry defines a different deployment type (e.g., different hardware) to optimize.
                     items:
+                      description: OptimizerParam defines optimization parameters
+                        for a specific ModelServing deployment type.
                       properties:
                         cost:
-                          description: Cost is the cost associated with running this
-                            backend.
+                          description: |-
+                            Cost represents the relative cost factor for this deployment type.
+                            Used in optimization calculations to balance performance vs. cost.
                           format: int32
                           minimum: 0
                           type: integer
                         maxReplicas:
                           description: MaxReplicas is the maximum number of replicas
-                            for the backend.
+                            allowed for this deployment type.
                           format: int32
                           maximum: 1000000
                           minimum: 1
                           type: integer
                         minReplicas:
                           description: MinReplicas is the minimum number of replicas
-                            for the backend.
+                            to maintain for this deployment type.
                           format: int32
                           maximum: 1000000
                           minimum: 0
                           type: integer
                         target:
-                          description: The scaling instance configuration
+                          description: Target specifies the ModelServing deployment
+                            and its monitoring configuration.
                           properties:
                             additionalMatchLabels:
                               additionalProperties:
                                 type: string
-                              description: AdditionalMatchLabels is the additional
-                                labels to match the target object.
+                              description: |-
+                                AdditionalMatchLabels provides additional label selectors to refine
+                                which pods within the ModelServing deployment should be monitored.
                               type: object
                             metricEndpoint:
-                              description: MetricEndpoint is the metric source.
+                              description: |-
+                                MetricEndpoint configures how to scrape metrics from the target pods.
+                                If not specified, defaults to port 8100 and path "/metrics".
                               properties:
                                 port:
                                   default: 8100
-                                  description: The port of pods exposing metric endpoints
+                                  description: Port is the network port where metrics
+                                    are exposed by the pods.
                                   format: int32
                                   type: integer
                                 uri:
                                   default: /metrics
-                                  description: The metric uri, e.g. /metrics
+                                  description: URI is the path where metrics are exposed
+                                    (e.g., "/metrics").
                                   type: string
                               type: object
                             targetRef:
-                              description: TargetRef references the target object.
+                              description: TargetRef references the ModelServing object
+                                to monitor and scale.
                               properties:
                                 apiVersion:
                                   description: API version of the referent.
@@ -158,8 +172,8 @@ spec:
                     type: array
                 type: object
               policyRef:
-                description: PolicyRef references the autoscaling policy to be optimized
-                  scaling base on multiple targets.
+                description: PolicyRef references the AutoscalingPolicy that defines
+                  the scaling rules and metrics.
                 properties:
                   name:
                     default: ""
@@ -173,45 +187,54 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               scalingConfiguration:
-                description: Adjust the number of related instances based on specified
-                  monitoring metrics and their target values.
+                description: |-
+                  ScalingConfiguration defines traditional autoscaling behavior that adjusts replica counts
+                  based on monitoring metrics and target values for a single ModelServing deployment.
                 properties:
                   maxReplicas:
-                    description: MaxReplicas is the maximum number of replicas.
+                    description: MaxReplicas is the maximum number of replicas allowed.
                     format: int32
                     maximum: 1000000
                     minimum: 1
                     type: integer
                   minReplicas:
-                    description: MinReplicas is the minimum number of replicas.
+                    description: MinReplicas is the minimum number of replicas to
+                      maintain.
                     format: int32
                     maximum: 1000000
                     minimum: 0
                     type: integer
                   target:
-                    description: Target represents the objects be monitored and scaled.
+                    description: Target specifies the ModelServing deployment to monitor
+                      and scale.
                     properties:
                       additionalMatchLabels:
                         additionalProperties:
                           type: string
-                        description: AdditionalMatchLabels is the additional labels
-                          to match the target object.
+                        description: |-
+                          AdditionalMatchLabels provides additional label selectors to refine
+                          which pods within the ModelServing deployment should be monitored.
                         type: object
                       metricEndpoint:
-                        description: MetricEndpoint is the metric source.
+                        description: |-
+                          MetricEndpoint configures how to scrape metrics from the target pods.
+                          If not specified, defaults to port 8100 and path "/metrics".
                         properties:
                           port:
                             default: 8100
-                            description: The port of pods exposing metric endpoints
+                            description: Port is the network port where metrics are
+                              exposed by the pods.
                             format: int32
                             type: integer
                           uri:
                             default: /metrics
-                            description: The metric uri, e.g. /metrics
+                            description: URI is the path where metrics are exposed
+                              (e.g., "/metrics").
                             type: string
                         type: object
                       targetRef:
-                        description: TargetRef references the target object.
+                        description: TargetRef references the ModelServing object
+                          to monitor and scale.
                         properties:
                           apiVersion:
                             description: API version of the referent.
@@ -268,8 +291,8 @@ spec:
                 be set, but not both.
               rule: has(self.optimizerConfiguration) != has(self.scalingConfiguration)
           status:
-            description: AutoscalingPolicyBindingStatus defines the status of a autoscaling
-              policy binding.
+            description: AutoscalingPolicyBindingStatus defines the observed state
+              of AutoscalingPolicyBinding.
             type: object
         type: object
     served: true

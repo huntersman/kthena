@@ -1,23 +1,5 @@
 # Model Booster
 
-### The rules of generated resource name
-
-- The name of the `ModelServing` is in the format of `<model-name>-<backend-name>`.
-- The name of the
-  `ModelServer` is in the format of
-  `<model-name>-<backend-name>`.
-- The `ModelRoute` name is in the format of `<model-name>`.
-- The `AutoscalingPolicy` name is in the format of `<model-name>` if in the model level or `<model-name>-<backend-name>`
-  if in the backend level.
-- The `AutoscalingPolicyBinding` name is same with `AutoscalingPolicy` name.
-
-For example, create a `ModelBooster` named `test-model` with two backends, one is `backend1` and the other is `backend2`, both
-backend types are `vLLM`, then
-the name of the generated `ModelServing` will be `test-model-backend1` and `test-model-backend2`, the
-name of the generated `ModelServer` will be `test-model-backend1` and `test-model-backend2`, and the
-name of the generated `ModelRoute` will be `test-model`. If `AutoscalingPolicy` is defined in the model level, the name
-will be `test-model`, otherwise the name will be `test-model-backend1` and `test-model-backend2`.
-
 ### How Model Booster Controller works
 
 Model Booster Controller watches for changes to `ModelBooster` CR in the Kubernetes cluster. When a `ModelBooster` CR is created or updated,
