@@ -76,8 +76,8 @@ func (m *MockStore) DeletePod(podName types.NamespacedName) error {
 	return args.Error(0)
 }
 
-func (m *MockStore) MatchModelServer(modelName string, request *http.Request) (types.NamespacedName, bool, *aiv1alpha1.ModelRoute, error) {
-	args := m.Called(modelName, request)
+func (m *MockStore) MatchModelServer(modelName string, request *http.Request, gatewayKey ...string) (types.NamespacedName, bool, *aiv1alpha1.ModelRoute, error) {
+	args := m.Called(modelName, request, gatewayKey)
 	var modelRoute *aiv1alpha1.ModelRoute
 	if args.Get(2) != nil {
 		modelRoute = args.Get(2).(*aiv1alpha1.ModelRoute)

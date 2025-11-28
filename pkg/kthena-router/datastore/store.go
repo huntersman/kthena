@@ -142,7 +142,7 @@ type Store interface {
 	DeletePod(podName types.NamespacedName) error
 
 	// New methods for routing functionality
-	MatchModelServer(modelName string, request *http.Request) (types.NamespacedName, bool, *aiv1alpha1.ModelRoute, error)
+	MatchModelServer(modelName string, request *http.Request, gatewayKey ...string) (types.NamespacedName, bool, *aiv1alpha1.ModelRoute, error)
 
 	// Model routing methods
 	AddOrUpdateModelRoute(mr *aiv1alpha1.ModelRoute) error
@@ -615,7 +615,7 @@ func (s *store) DeleteModelRoute(namespacedName string) error {
 	return nil
 }
 
-func (s *store) MatchModelServer(model string, req *http.Request) (types.NamespacedName, bool, *aiv1alpha1.ModelRoute, error) {
+func (s *store) MatchModelServer(model string, req *http.Request, gatewayKey ...string) (types.NamespacedName, bool, *aiv1alpha1.ModelRoute, error) {
 	s.routeMutex.RLock()
 	defer s.routeMutex.RUnlock()
 
@@ -631,8 +631,27 @@ func (s *store) MatchModelServer(model string, req *http.Request) (types.Namespa
 
 	// Check parentRefs if specified
 	if len(mr.Spec.ParentRefs) > 0 {
-		if !s.matchesParentRefs(mr) {
-			return types.NamespacedName{}, false, nil, fmt.Errorf("ModelRoute %s/%s does not match any Gateway", mr.Namespace, mr.Name)
+		// If gatewayKey is provided, check if ModelRoute matches the specific gateway
+		if len(gatewayKey) > 0 && gatewayKey[0] != "" {
+			if !s.matchesSpecificGateway(mr, gatewayKey[0]) {
+				return types.NamespacedName{}, false, nil, fmt.Errorf("ModelRoute %s/%s does not match Gateway %s", mr.Namespace, mr.Name, gatewayKey[0])
+			}
+		} else {
+			// No specific gateway specified, check if it matches any gateway
+			if !s.matchesParentRefs(mr) {
+				return types.NamespacedName{}, false, nil, fmt.Errorf("ModelRoute %s/%s does not match any Gateway", mr.Namespace, mr.Name)
+			}
+		}
+	} else {
+		// If ModelRoute has no parentRefs but gatewayKey is specified, it should not match
+		// (ModelRoute without parentRefs attaches to all Gateways in the same namespace)
+		// But if gatewayKey is specified, we should check namespace match
+		if len(gatewayKey) > 0 && gatewayKey[0] != "" {
+			// Extract namespace from gatewayKey (format: namespace/name)
+			parts := strings.Split(gatewayKey[0], "/")
+			if len(parts) == 2 && parts[0] != mr.Namespace {
+				return types.NamespacedName{}, false, nil, fmt.Errorf("ModelRoute %s/%s namespace does not match Gateway namespace %s", mr.Namespace, mr.Name, parts[0])
+			}
 		}
 	}
 
@@ -667,6 +686,47 @@ func (s *store) matchesParentRefs(mr *aiv1alpha1.ModelRoute) bool {
 		gatewayObj := s.gateways[key]
 		if gatewayObj != nil {
 			// If sectionName is specified, check if the listener exists
+			if parentRef.SectionName != nil {
+				sectionName := string(*parentRef.SectionName)
+				for _, listener := range gatewayObj.Spec.Listeners {
+					if string(listener.Name) == sectionName {
+						return true
+					}
+				}
+			} else {
+				// No sectionName specified, match any listener
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// matchesSpecificGateway checks if the ModelRoute matches a specific gateway
+func (s *store) matchesSpecificGateway(mr *aiv1alpha1.ModelRoute, gatewayKey string) bool {
+	s.gatewayMutex.RLock()
+	defer s.gatewayMutex.RUnlock()
+
+	gatewayObj := s.gateways[gatewayKey]
+	if gatewayObj == nil {
+		return false
+	}
+
+	for _, parentRef := range mr.Spec.ParentRefs {
+		// Get namespace from parentRef, default to ModelRoute's namespace
+		namespace := mr.Namespace
+		if parentRef.Namespace != nil {
+			namespace = string(*parentRef.Namespace)
+		}
+
+		// Get name from parentRef
+		name := string(parentRef.Name)
+		key := fmt.Sprintf("%s/%s", namespace, name)
+
+		// Check if this parentRef matches the specified gateway
+		if key == gatewayKey {
+			// If sectionName is specified, check if the listener exists in the gateway
 			if parentRef.SectionName != nil {
 				sectionName := string(*parentRef.SectionName)
 				for _, listener := range gatewayObj.Spec.Listeners {
