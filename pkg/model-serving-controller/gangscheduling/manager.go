@@ -89,9 +89,9 @@ func (m *Manager) managePodGroups(ctx context.Context, mi *workloadv1alpha1.Mode
 		return fmt.Errorf("failed to get ServingGroups for ModelServing %s: %v", utils.GetNamespaceName(mi), err)
 	}
 
-	neededHandledPodGrupNameList := neededHandledPodGroupNameList(expectedReplicas, mi, servingGroupList)
+	neededHandledPodGroupNameList := neededHandledPodGroupNameList(expectedReplicas, mi, servingGroupList)
 	// Create or update PodGroups for each ServingGroup
-	for _, podGroupName := range neededHandledPodGrupNameList {
+	for _, podGroupName := range neededHandledPodGroupNameList {
 		// podGroupName := m.generatePodGroupName(mi.Name, i)
 
 		if existingPG, exists := existingPodGroups[podGroupName]; exists {
@@ -191,7 +191,7 @@ func (m *Manager) calculateRequirements(mi *workloadv1alpha1.ModelServing, podGr
 		if len(roleList) > expectReplicas {
 			continue
 		}
-		// When length(roleList) < expectReplicas, that is, when scaling up or updating.
+		// When length(roleList) <= expectReplicas, that is, when scaling up or updating.
 		// Provide the roleNameList to be updated.
 		needHandledRoleNameList := needHandledRoleNameList(expectReplicas, roleList, role.Name)
 
@@ -212,7 +212,7 @@ func (m *Manager) calculateRequirements(mi *workloadv1alpha1.ModelServing, podGr
 			}
 		}
 	}
-
+	fmt.Printf("minMember: %d, minTaskMember: %v, minResources: %v\n", minMember, minTaskMember, minResources)
 	return minMember, minTaskMember, minResources
 }
 
@@ -437,7 +437,7 @@ func neededHandledPodGroupNameList(expectedReplicas int, mi *workloadv1alpha1.Mo
 	// Changes to the PodGroup will not affect Pods that have already been deployed.
 	// During binpack scale down, it is unknown which ServingGroup will be deleted.
 	// Therefore, return all podGroup names that exist.
-	// Delection of PodGroups is handled when ServingGroups are deleted.
+	// Deletion of PodGroups is handled when ServingGroups are deleted.
 	podGroupNameListlength := max(expectedReplicas, len(servingGroupNameList))
 
 	nameList := make([]string, 0, podGroupNameListlength)
@@ -455,23 +455,23 @@ func neededHandledPodGroupNameList(expectedReplicas int, mi *workloadv1alpha1.Mo
 	return nameList
 }
 
-// NeedHandledRoleNameList is used in Role sacle up scenario to get the roleName list that need scale up.
+// NeedHandledRoleNameList is used in Role scale up scenario to get the roleName list that need scale up.
 // Therefore, the default value for `expectedReplicas` is greater than `length(RoleList)`.
 // Or the Role update scenario. (This scenario is This scenario is relatively rare. Since it is not permitted to modify an already configured gangPolicy,
 // and in practical applications, the workerReplicas within a deployed role are rarely altered.)
 func needHandledRoleNameList(expectedReplicas int, existRoleList []datastore.Role, roleName string) []string {
-	sacleUpRoleNameList := make([]string, 0, expectedReplicas)
+	scaleUpRoleNameList := make([]string, 0, expectedReplicas)
 
 	for _, role := range existRoleList {
 		_, index := utils.GetParentNameAndOrdinal(role.Name)
 		if index > expectedReplicas-1 {
-			sacleUpRoleNameList = append(sacleUpRoleNameList, role.Name)
+			scaleUpRoleNameList = append(scaleUpRoleNameList, role.Name)
 			expectedReplicas = expectedReplicas - 1
 		}
 	}
 
 	for i := 0; i < expectedReplicas; i++ {
-		sacleUpRoleNameList = append(sacleUpRoleNameList, utils.GenerateRoleID(roleName, i))
+		scaleUpRoleNameList = append(scaleUpRoleNameList, utils.GenerateRoleID(roleName, i))
 	}
-	return sacleUpRoleNameList
+	return scaleUpRoleNameList
 }

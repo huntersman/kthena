@@ -649,11 +649,18 @@ func (c *ModelServingController) scaleDownServingGroups(ctx context.Context, mi 
 		return servingGroupScores[i].Index > servingGroupScores[j].Index
 	})
 
+	var allErrors []error
 	// Delete ServingGroups with the lowest scores
 	toDeleteCount := len(servingGroupList) - expectedCount
 	for i := 0; i < toDeleteCount; i++ {
 		c.DeleteServingGroup(mi, servingGroupScores[i].Name)
-		c.gangManager.DeletePodGroupWhenServingGroupDeleted(ctx, mi, servingGroupScores[i].Name)
+		if err := c.gangManager.DeletePodGroupWhenServingGroupDeleted(ctx, mi, servingGroupScores[i].Name); err != nil {
+			allErrors = append(allErrors, err)
+		}
+	}
+
+	if len(allErrors) > 0 {
+		return fmt.Errorf("Delete ServingGroup failed: %v", allErrors)
 	}
 
 	return nil
@@ -804,7 +811,7 @@ func (c *ModelServingController) scaleDownRoles(ctx context.Context, mi *workloa
 
 	for _, role := range roleList {
 		// Get score for each Role.
-		// If not set 'PodDelectionCost` annotation, the score is set to 0.
+		// If not set 'PodDeletionCost` annotation, the score is set to 0.
 		score, err := c.calculateRoleScore(mi, groupName, targetRole.Name, role.Name)
 		if err != nil {
 			klog.Errorf("Failed to calculate score for role %s: %v", role.Name, err)

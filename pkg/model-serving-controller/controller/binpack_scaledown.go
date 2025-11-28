@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	PodDeletionCostAnnotation = "controller.kubernetes.io/pod-deletion-cost"
+	PodDeletionCostAnnotation = corev1.PodDeletionCost
 )
 
 // ServingGroupWithScore stores serving group name and its score

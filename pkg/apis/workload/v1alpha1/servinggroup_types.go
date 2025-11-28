@@ -28,6 +28,26 @@ type GangPolicy struct {
 	// in gang scheduling. This map allows users to specify different
 	// minimum replica requirements for different roles.
 	// Notice: In practice, when determining the minTaskMember for a podGroup, it takes the minimum value between `MinRoleReplicas[role.Name]` and role.Replicas.
+	// If you set:
+	// gangPolicy:
+	//   minRoleReplicas:
+	//     Prefill: 2
+	//     Decode: 2
+	// And set the roles as:
+	// roles:
+	//   - name: P
+	//     replicas: 1
+	//     workerReplicas: 2
+	//   - name: D
+	//     replicas: 3
+	//     workerReplicas: 1
+	// The resulting podGroup will have minTaskMember:
+	// minTaskMember:
+	//   P-0: 3 (1 entry pod + 2 worker pods)
+	//   D-0: 4 (1 entry pod + 3 worker pods)
+	//   D-1: 4 (1 entry pod + 3 worker pods)
+	// The replicase of P is min(minRoleReplicas['P'], role.Replicas) = min(2, 1) = 1
+	// The replicase of D is min(minRoleReplicas['D'], role.Replicas) = min(2, 3) = 2
 	// Key: role name
 	// Value: minimum number of replicas required for that role
 	// +optional

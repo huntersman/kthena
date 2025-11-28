@@ -174,7 +174,7 @@ servingGroupList, err := m.store.GetServingGroupByModelServing(utils.GetNamespac
 // Changes to the PodGroup will not affect Pods that have already been deployed.
 // During binpack scale down, it is unknown which ServingGroup will be deleted.
 // Therefore, return all podGroup names that exist.
-// Delection of PodGroups is handled when ServingGroups are deleted.
+// Detection of PodGroups is handled when ServingGroups are deleted.
 podGroupNameListlength := max(expectedReplicas, len(servingGroupNameList))
 nameList := make([]string, 0, podGroupNameListlength)
 for _, group := range servingGroupNameList {

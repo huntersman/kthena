@@ -832,7 +832,7 @@ func TestNeedHandledRoleNameList(t *testing.T) {
 			},
 		},
 		{
-			name:             "sacle up, exist role index is larger than expectedReplicas",
+			name:             "scale up, exist role index is larger than expectedReplicas",
 			expectedReplicas: 3,
 			existRoleList: []datastore.Role{
 				{Name: utils.GenerateRoleID("test-role", 10)},

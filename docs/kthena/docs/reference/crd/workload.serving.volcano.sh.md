@@ -257,7 +257,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `minRoleReplicas` _object (keys:string, values:integer)_ | MinRoleReplicas defines the minimum number of replicas required for each role<br />in gang scheduling. This map allows users to specify different<br />minimum replica requirements for different roles.<br />Notice: In practice, when determining the minTaskMember for a podGroup, it takes the minimum value between `MinRoleReplicas[role.Name]` and role.Replicas.<br />Key: role name<br />Value: minimum number of replicas required for that role |  |  |
+| `minRoleReplicas` _object (keys:string, values:integer)_ | MinRoleReplicas defines the minimum number of replicas required for each role<br />in gang scheduling. This map allows users to specify different<br />minimum replica requirements for different roles.<br />Notice: In practice, when determining the minTaskMember for a podGroup, it takes the minimum value between `MinRoleReplicas[role.Name]` and role.Replicas.<br />If you set:<br />gangPolicy:<br />  minRoleReplicas:<br />    Prefill: 2<br />    Decode: 2<br />And set the roles as:<br />roles:<br />  - name: P<br />    replicas: 1<br />    workerReplicas: 2<br />  - name: D<br />    replicas: 3<br />    workerReplicas: 1<br />The resulting podGroup will have minTaskMember:<br />minTaskMember:<br />  P-0: 3 (1 entry pod + 2 worker pods)<br />  D-0: 4 (1 entry pod + 3 worker pods)<br />  D-1: 4 (1 entry pod + 3 worker pods)<br />The replicase of P is min(minRoleReplicas['P'], role.Replicas) = min(2, 1) = 1<br />The replicase of D is min(minRoleReplicas['D'], role.Replicas) = min(2, 3) = 2<br />Key: role name<br />Value: minimum number of replicas required for that role |  |  |
 
 
 #### LoraAdapter
