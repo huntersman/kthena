@@ -840,68 +840,50 @@ func (c *ModelServingController) scaleDownRoles(ctx context.Context, mi *workloa
 	}
 }
 
-// scaleUpRoles handles Role scaling up
+// scaleUpRoles handles Role scaling up.
+// It creates new Roles with increasing indices starting from the current max index + 1.
 func (c *ModelServingController) scaleUpRoles(ctx context.Context, mi *workloadv1alpha1.ModelServing, groupName string, targetRole workloadv1alpha1.Role, roleList []datastore.Role, expectedCount int, servingGroupOrdinal int, newRevision string) {
-	// slice that will contain all Roles as expected
-	replicas := make([]*datastore.Role, expectedCount)
-	// slice that will contain all Roles out of expected range or fails to parse ordinal
-	condemned := make([]datastore.Role, 0)
-
-	// Partition roles into valid replicas and condemned roles
+	// Find the maximum existing valid index to determine the starting point for new Roles
+	// Also count only Roles with valid ordinals
+	maxIndex := -1
+	validCount := 0
 	for _, role := range roleList {
 		_, roleOrdinal := utils.GetParentNameAndOrdinal(role.Name)
 		if roleOrdinal >= 0 {
-			if roleOrdinal < expectedCount {
-				copy := role
-				replicas[roleOrdinal] = &copy
-			} else {
-				if should, _ := c.shouldUseBinPackStrategy(mi); should {
-					// During binpack scaledown processing, situations may arise where the role index exceeds the expected value.
-					// If we find a RoleID greater than expectedReplicas, it means that the number of Roles we need to create has decreased by one.
-					expectedCount = expectedCount - 1
-				} else {
-					condemned = append(condemned, role)
-				}
+			validCount++
+			if roleOrdinal > maxIndex {
+				maxIndex = roleOrdinal
 			}
+		}
+	}
+
+	// Calculate how many new Roles we need to create
+	toCreate := expectedCount - validCount
+	if toCreate <= 0 {
+		// No new Roles need to be created
+		return
+	}
+
+	// Role needs to scale up, and the ServingGroup status needs to be set to Scaling
+	if c.store.GetServingGroupStatus(utils.GetNamespaceName(mi), groupName) != datastore.ServingGroupScaling {
+		err := c.store.UpdateServingGroupStatus(utils.GetNamespaceName(mi), groupName, datastore.ServingGroupScaling)
+		if err != nil {
+			klog.Errorf("failed to set ServingGroup %s/%s status: %v", mi.Namespace+"/"+mi.Name, groupName, err)
+			return
+		}
+	}
+
+	// Create new Roles with increasing indices
+	for i := 0; i < toCreate; i++ {
+		newIndex := maxIndex + 1 + i
+		// Create pods for role
+		err := c.CreatePodByRole(ctx, *targetRole.DeepCopy(), mi, newIndex, servingGroupOrdinal, newRevision)
+		if err != nil {
+			klog.Errorf("create role %s for ServingGroup %s failed: %v", utils.GenerateRoleID(targetRole.Name, newIndex), groupName, err)
 		} else {
-			// Whether the role sequence number fails to parse or out of expected range, a rebuild should be performed
-			condemned = append(condemned, role)
+			// Insert new Role to global storage
+			c.store.AddRole(utils.GetNamespaceName(mi), groupName, targetRole.Name, utils.GenerateRoleID(targetRole.Name, newIndex), newRevision)
 		}
-	}
-
-	// Handle scale up
-	for idx := 0; idx < expectedCount; idx++ {
-		if replicas[idx] == nil {
-			// Role needs to scale up, and the ServingGroup status needs to be set to Scaling
-			if c.store.GetServingGroupStatus(utils.GetNamespaceName(mi), groupName) != datastore.ServingGroupScaling {
-				err := c.store.UpdateServingGroupStatus(utils.GetNamespaceName(mi), groupName, datastore.ServingGroupScaling)
-				if err != nil {
-					klog.Errorf("failed to set ServingGroup %s/%s status: %v", mi.Namespace+"/"+mi.Name, groupName, err)
-					return
-				}
-			}
-			// Create pods for role
-			err := c.CreatePodByRole(ctx, *targetRole.DeepCopy(), mi, idx, servingGroupOrdinal, newRevision)
-			if err != nil {
-				klog.Errorf("create role %s for ServingGroup %s failed: %v", utils.GenerateRoleID(targetRole.Name, idx), groupName, err)
-			} else {
-				// Insert new Role to global storage
-				c.store.AddRole(utils.GetNamespaceName(mi), groupName, targetRole.Name, utils.GenerateRoleID(targetRole.Name, idx), newRevision)
-			}
-		}
-	}
-
-	// Handle scale down
-	for _, role := range condemned {
-		// Role needs to scale down, and the ServingGroup status needs to be set to Scaling
-		if c.store.GetServingGroupStatus(utils.GetNamespaceName(mi), groupName) != datastore.ServingGroupScaling {
-			err := c.store.UpdateServingGroupStatus(utils.GetNamespaceName(mi), groupName, datastore.ServingGroupScaling)
-			if err != nil {
-				klog.Errorf("failed to set ServingGroup %s/%s status: %v", mi.Namespace+"/"+mi.Name, groupName, err)
-				return
-			}
-		}
-		c.DeleteRole(ctx, mi, groupName, targetRole.Name, role.Name)
 	}
 }
 
