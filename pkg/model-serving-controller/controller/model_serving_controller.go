@@ -572,49 +572,31 @@ func (c *ModelServingController) manageServingGroupReplicas(ctx context.Context,
 }
 
 // scaleUpServingGroups scales up the ServingGroups to the expected count.
+// It creates new ServingGroups with increasing indices starting from the current max index + 1.
 func (c *ModelServingController) scaleUpServingGroups(ctx context.Context, mi *workloadv1alpha1.ModelServing, servingGroupList []datastore.ServingGroup, expectedCount int, newRevision string) error {
-	// slice that will contain all ServingGroups as excepted
-	replicas := make([]*datastore.ServingGroup, expectedCount)
-	// slice that will contain all ServingGroups Out of except or fails to parse ordinal
-	condemned := make([]datastore.ServingGroup, 0)
-
-	// First we partition ServingGroups into two lists valid replicas and condemned ServingGroups
+	// Find the maximum existing index to determine the starting point for new ServingGroups
+	maxIndex := -1
 	for _, group := range servingGroupList {
 		_, servingGroupOrdinal := utils.GetParentNameAndOrdinal(group.Name)
-		if servingGroupOrdinal >= 0 {
-			if servingGroupOrdinal < expectedCount {
-				copyServingGroup := group
-				replicas[servingGroupOrdinal] = &copyServingGroup
-			} else {
-				if should, _ := c.shouldUseBinPackStrategy(mi); should {
-					// During binpack scaledown processing, situations may arise where the group index exceeds the expected value.
-					// If we find a ServingGroup Index greater than expectedReplicas, it means that the number of servingGroup we need to create has decreased by one.
-					expectedCount = expectedCount - 1
-				} else {
-					condemned = append(condemned, group)
-				}
-			}
-		} else {
-			// Whether the ServingGroup sequence number fails to parse or out of except, a rebuild should be performed
-			condemned = append(condemned, group)
+		if servingGroupOrdinal > maxIndex {
+			maxIndex = servingGroupOrdinal
 		}
 	}
 
-	for idx := 0; idx < expectedCount; idx++ {
-		if replicas[idx] == nil {
-			// Create pods for ServingGroup
-			err := c.CreatePodsForServingGroup(ctx, mi, idx, newRevision)
-			if err != nil {
-				// I think that after create a pod failed, a period of time should pass before joining the coordination queue.
-				return fmt.Errorf("create Serving group failed: %v", err)
-			}
-			// Insert new ServingGroup to global storage
-			c.store.AddServingGroup(utils.GetNamespaceName(mi), idx, newRevision)
-		}
-	}
+	// Calculate how many new ServingGroups we need to create
+	currentCount := len(servingGroupList)
+	toCreate := expectedCount - currentCount
 
-	for _, group := range condemned {
-		c.DeleteServingGroup(mi, group.Name)
+	// Create new ServingGroups with increasing indices
+	for i := 0; i < toCreate; i++ {
+		newIndex := maxIndex + 1 + i
+		// Create pods for ServingGroup
+		err := c.CreatePodsForServingGroup(ctx, mi, newIndex, newRevision)
+		if err != nil {
+			return fmt.Errorf("create Serving group failed: %v", err)
+		}
+		// Insert new ServingGroup to global storage
+		c.store.AddServingGroup(utils.GetNamespaceName(mi), newIndex, newRevision)
 	}
 
 	return nil
