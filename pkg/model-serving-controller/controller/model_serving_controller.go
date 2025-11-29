@@ -590,6 +590,10 @@ func (c *ModelServingController) scaleUpServingGroups(ctx context.Context, mi *w
 
 	// Calculate how many new ServingGroups we need to create
 	toCreate := expectedCount - validCount
+	if toCreate <= 0 {
+		// No new ServingGroups need to be created
+		return nil
+	}
 
 	// Create new ServingGroups with increasing indices
 	for i := 0; i < toCreate; i++ {
