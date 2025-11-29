@@ -22,7 +22,6 @@ import (
 
 	workloadv1alpha1 "github.com/volcano-sh/kthena/pkg/apis/workload/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
 )
 
 const (
@@ -84,27 +83,4 @@ func (c *ModelServingController) calculateServingGroupScore(mi *workloadv1alpha1
 	}
 
 	return score, nil
-}
-
-// shouldUseBinPackScaleDown checks if binpack scale down should be used.
-// Returns true if any pod under the ModelServing has the PodDeletionCostAnnotation.
-func (c *ModelServingController) shouldUseBinPackStrategy(mi *workloadv1alpha1.ModelServing) (bool, error) {
-	// Get all pods belonging to this ModelServing
-	selector := labels.SelectorFromSet(map[string]string{
-		workloadv1alpha1.ModelServingNameLabelKey: mi.Name,
-	})
-
-	pods, err := c.podsLister.Pods(mi.Namespace).List(selector)
-	if err != nil {
-		return false, fmt.Errorf("failed to list pods for ModelServing %s/%s: %v", mi.Namespace, mi.Name, err)
-	}
-
-	// Check if any pod has the PodDeletionCostAnnotation
-	for _, pod := range pods {
-		if _, exists := pod.Annotations[PodDeletionCostAnnotation]; exists {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }

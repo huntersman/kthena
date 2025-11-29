@@ -1552,60 +1552,60 @@ func verifyRoles(t *testing.T, controller *ModelServingController, mi *workloadv
 // TestScaleUpServingGroups tests the scaleUpServingGroups function with various scenarios
 func TestScaleUpServingGroups(t *testing.T) {
 	tests := []struct {
-		name                string
-		existingIndices     []int  // Indices of existing ServingGroups
-		expectedCount       int    // Target count for scale up
-		expectedNewIndices  []int  // Expected indices for newly created groups
-		expectNoCreation    bool   // Whether no new groups should be created
+		name               string
+		existingIndices    []int // Indices of existing ServingGroups
+		expectedCount      int   // Target count for scale up
+		expectedNewIndices []int // Expected indices for newly created groups
+		expectNoCreation   bool  // Whether no new groups should be created
 	}{
 		{
-			name:                "scale up from 0 to 2 groups",
-			existingIndices:     []int{},
-			expectedCount:       2,
-			expectedNewIndices:  []int{0, 1},
-			expectNoCreation:    false,
+			name:               "scale up from 0 to 2 groups",
+			existingIndices:    []int{},
+			expectedCount:      2,
+			expectedNewIndices: []int{0, 1},
+			expectNoCreation:   false,
 		},
 		{
-			name:                "scale up from 1 to 3 groups with continuous indices",
-			existingIndices:     []int{0},
-			expectedCount:       3,
-			expectedNewIndices:  []int{1, 2},
-			expectNoCreation:    false,
+			name:               "scale up from 1 to 3 groups with continuous indices",
+			existingIndices:    []int{0},
+			expectedCount:      3,
+			expectedNewIndices: []int{1, 2},
+			expectNoCreation:   false,
 		},
 		{
-			name:                "scale up with gap in indices - should use increasing indices from max",
-			existingIndices:     []int{0, 5}, // Gap: indices 1-4 missing
-			expectedCount:       4,
-			expectedNewIndices:  []int{6, 7}, // Should continue from max index (5) + 1
-			expectNoCreation:    false,
+			name:               "scale up with gap in indices - should use increasing indices from max",
+			existingIndices:    []int{0, 5}, // Gap: indices 1-4 missing
+			expectedCount:      4,
+			expectedNewIndices: []int{6, 7}, // Should continue from max index (5) + 1
+			expectNoCreation:   false,
 		},
 		{
-			name:                "scale up with only high index existing",
-			existingIndices:     []int{10},
-			expectedCount:       3,
-			expectedNewIndices:  []int{11, 12}, // Should continue from max index (10) + 1
-			expectNoCreation:    false,
+			name:               "scale up with only high index existing",
+			existingIndices:    []int{10},
+			expectedCount:      3,
+			expectedNewIndices: []int{11, 12}, // Should continue from max index (10) + 1
+			expectNoCreation:   false,
 		},
 		{
-			name:                "no scale up needed - validCount equals expectedCount",
-			existingIndices:     []int{0, 1},
-			expectedCount:       2,
-			expectedNewIndices:  []int{},
-			expectNoCreation:    true,
+			name:               "no scale up needed - validCount equals expectedCount",
+			existingIndices:    []int{0, 1},
+			expectedCount:      2,
+			expectedNewIndices: []int{},
+			expectNoCreation:   true,
 		},
 		{
-			name:                "no scale up needed - validCount exceeds expectedCount",
-			existingIndices:     []int{0, 1, 2},
-			expectedCount:       2,
-			expectedNewIndices:  []int{},
-			expectNoCreation:    true,
+			name:               "no scale up needed - validCount exceeds expectedCount",
+			existingIndices:    []int{0, 1, 2},
+			expectedCount:      2,
+			expectedNewIndices: []int{},
+			expectNoCreation:   true,
 		},
 		{
-			name:                "scale up from single group",
-			existingIndices:     []int{0},
-			expectedCount:       5,
-			expectedNewIndices:  []int{1, 2, 3, 4},
-			expectNoCreation:    false,
+			name:               "scale up from single group",
+			existingIndices:    []int{0},
+			expectedCount:      5,
+			expectedNewIndices: []int{1, 2, 3, 4},
+			expectNoCreation:   false,
 		},
 	}
 
@@ -1693,6 +1693,161 @@ func TestScaleUpServingGroups(t *testing.T) {
 				// Verify total groups count
 				expectedTotal := len(tt.existingIndices) + len(tt.expectedNewIndices)
 				assert.Equal(t, expectedTotal, len(groups), "Total group count should match expected")
+			}
+		})
+	}
+}
+
+// TestScaleUpRoles tests the scaleUpRoles function with various scenarios
+func TestScaleUpRoles(t *testing.T) {
+	tests := []struct {
+		name               string
+		existingIndices    []int // Indices of existing Roles
+		expectedCount      int   // Target count for scale up
+		expectedNewIndices []int // Expected indices for newly created roles
+		expectNoCreation   bool  // Whether no new roles should be created
+	}{
+		{
+			name:               "scale up from 0 to 2 roles",
+			existingIndices:    []int{},
+			expectedCount:      2,
+			expectedNewIndices: []int{0, 1},
+			expectNoCreation:   false,
+		},
+		{
+			name:               "scale up from 1 to 3 roles with continuous indices",
+			existingIndices:    []int{0},
+			expectedCount:      3,
+			expectedNewIndices: []int{1, 2},
+			expectNoCreation:   false,
+		},
+		{
+			name:               "scale up with gap in indices - should use increasing indices from max",
+			existingIndices:    []int{0, 5}, // Gap: indices 1-4 missing
+			expectedCount:      4,
+			expectedNewIndices: []int{6, 7}, // Should continue from max index (5) + 1
+			expectNoCreation:   false,
+		},
+		{
+			name:               "scale up with only high index existing",
+			existingIndices:    []int{10},
+			expectedCount:      3,
+			expectedNewIndices: []int{11, 12}, // Should continue from max index (10) + 1
+			expectNoCreation:   false,
+		},
+		{
+			name:               "no scale up needed - validCount equals expectedCount",
+			existingIndices:    []int{0, 1},
+			expectedCount:      2,
+			expectedNewIndices: []int{},
+			expectNoCreation:   true,
+		},
+		{
+			name:               "no scale up needed - validCount exceeds expectedCount",
+			existingIndices:    []int{0, 1, 2},
+			expectedCount:      2,
+			expectedNewIndices: []int{},
+			expectNoCreation:   true,
+		},
+		{
+			name:               "scale up from single role",
+			existingIndices:    []int{0},
+			expectedCount:      5,
+			expectedNewIndices: []int{1, 2, 3, 4},
+			expectNoCreation:   false,
+		},
+	}
+
+	for idx, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create fresh fake clients for each test to ensure isolation
+			kubeClient := kubefake.NewSimpleClientset()
+			kthenaClient := kthenafake.NewSimpleClientset()
+			volcanoClient := volcanofake.NewSimpleClientset()
+
+			// Create controller without running it to avoid background sync interference
+			controller, err := NewModelServingController(kubeClient, kthenaClient, volcanoClient)
+			assert.NoError(t, err)
+
+			// Create a unique ModelServing for this test
+			miName := fmt.Sprintf("test-scaleup-roles-%d", idx)
+			roleName := "prefill"
+			groupName := utils.GenerateServingGroupName(miName, 0)
+			mi := &workloadv1alpha1.ModelServing{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      miName,
+				},
+				Spec: workloadv1alpha1.ModelServingSpec{
+					Replicas:      ptr.To[int32](1),
+					SchedulerName: "volcano",
+					Template: workloadv1alpha1.ServingGroup{
+						Roles: []workloadv1alpha1.Role{
+							{
+								Name:     roleName,
+								Replicas: ptr.To[int32](int32(tt.expectedCount)),
+								EntryTemplate: workloadv1alpha1.PodTemplateSpec{
+									Spec: corev1.PodSpec{
+										Containers: []corev1.Container{
+											{
+												Name:  "prefill-container",
+												Image: "test-image:latest",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					RecoveryPolicy: workloadv1alpha1.RoleRecreate,
+				},
+			}
+
+			// Pre-populate the store with a ServingGroup
+			controller.store.AddServingGroup(utils.GetNamespaceName(mi), 0, "test-revision")
+
+			// Pre-populate the store with existing Roles
+			for _, ordinal := range tt.existingIndices {
+				controller.store.AddRole(utils.GetNamespaceName(mi), groupName, roleName, utils.GenerateRoleID(roleName, ordinal), "test-revision")
+			}
+
+			// Build the roleList to pass to scaleUpRoles
+			existingRoles := make([]datastore.Role, len(tt.existingIndices))
+			for i, ordinal := range tt.existingIndices {
+				existingRoles[i] = datastore.Role{
+					Name: utils.GenerateRoleID(roleName, ordinal),
+				}
+			}
+
+			targetRole := mi.Spec.Template.Roles[0]
+
+			// Call scaleUpRoles directly
+			controller.scaleUpRoles(context.Background(), mi, groupName, targetRole, existingRoles, tt.expectedCount, 0, "new-revision")
+
+			// Verify the results
+			roles, err := controller.store.GetRoleList(utils.GetNamespaceName(mi), groupName, roleName)
+			assert.NoError(t, err)
+
+			if tt.expectNoCreation {
+				// Verify no new roles were created
+				assert.Equal(t, len(tt.existingIndices), len(roles), "No new roles should be created")
+			} else {
+				// Verify new indices are as expected
+				for _, expectedIdx := range tt.expectedNewIndices {
+					expectedName := utils.GenerateRoleID(roleName, expectedIdx)
+					found := false
+					for _, r := range roles {
+						if r.Name == expectedName {
+							found = true
+							break
+						}
+					}
+					assert.True(t, found, "Expected role %s to be created", expectedName)
+				}
+
+				// Verify total roles count
+				expectedTotal := len(tt.existingIndices) + len(tt.expectedNewIndices)
+				assert.Equal(t, expectedTotal, len(roles), "Total role count should match expected")
 			}
 		})
 	}
