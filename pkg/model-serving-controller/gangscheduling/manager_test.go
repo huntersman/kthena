@@ -29,6 +29,8 @@ import (
 	volcanofake "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 
 	workloadv1alpha1 "github.com/volcano-sh/kthena/pkg/apis/workload/v1alpha1"
+	"github.com/volcano-sh/kthena/pkg/model-serving-controller/datastore"
+	"github.com/volcano-sh/kthena/pkg/model-serving-controller/utils"
 )
 
 func TestCalculateRequirements(t *testing.T) {
@@ -84,10 +86,13 @@ func TestCalculateRequirements(t *testing.T) {
 	}
 
 	t.Run("basic calculation", func(t *testing.T) {
-		manager := NewManager(nil, nil)
+		store := datastore.New()
+		manager := NewManager(nil, nil, store)
 		mi := createBasicModelServing()
 
-		minMember, minTaskMember, minResources := manager.calculateRequirements(mi)
+		// servingGroupName is used to find roleList.
+		// It will not affect the calculation of minTaskMember.
+		minMember, minTaskMember, minResources := manager.calculateRequirements(mi, "test-serving-group")
 
 		// For 2 prefill roles (each with 1 entry + 3 workers) and 1 decode role (1 entry + 2 workers)
 		// Total pods = (1+3)*2 + (1+2)*1 = 8 + 3 = 11
@@ -115,7 +120,8 @@ func TestCalculateRequirements(t *testing.T) {
 	})
 
 	t.Run("with MinRoleReplicas constraint", func(t *testing.T) {
-		manager := NewManager(nil, nil)
+		store := datastore.New()
+		manager := NewManager(nil, nil, store)
 		mi := createBasicModelServing()
 
 		// Set MinRoleReplicas to limit the number of roles considered
@@ -125,7 +131,9 @@ func TestCalculateRequirements(t *testing.T) {
 		}
 		mi.Spec.Template.GangPolicy.MinRoleReplicas = minRoleReplicas
 
-		minMember, minTaskMember, minResources := manager.calculateRequirements(mi)
+		// servingGroupName is used to find roleList.
+		// It will not affect the calculation of minTaskMember.
+		minMember, minTaskMember, minResources := manager.calculateRequirements(mi, "test-serving-group")
 
 		// For 1 prefill role (1 entry + 3 workers) and 1 decode role (1 entry + 2 workers)
 		// Total pods = (1+3)*1 + (1+2)*1 = 4 + 3 = 7
@@ -152,11 +160,14 @@ func TestCalculateRequirements(t *testing.T) {
 	})
 
 	t.Run("nil MinRoleReplicas", func(t *testing.T) {
-		manager := NewManager(nil, nil)
+		store := datastore.New()
+		manager := NewManager(nil, nil, store)
 		mi := createBasicModelServing()
 		mi.Spec.Template.GangPolicy.MinRoleReplicas = nil
 
-		minMember, _, _ := manager.calculateRequirements(mi)
+		// servingGroupName is used to find roleList.
+		// It will not affect the calculation of minTaskMember.
+		minMember, _, _ := manager.calculateRequirements(mi, "test-serving-group")
 
 		// Should consider all roles without constraint
 		// Same as basic calculation: 11 pods
@@ -164,11 +175,14 @@ func TestCalculateRequirements(t *testing.T) {
 	})
 
 	t.Run("empty roles", func(t *testing.T) {
-		manager := NewManager(nil, nil)
+		store := datastore.New()
+		manager := NewManager(nil, nil, store)
 		mi := createBasicModelServing()
 		mi.Spec.Template.Roles = []workloadv1alpha1.Role{} // Empty roles
 
-		minMember, minTaskMember, minResources := manager.calculateRequirements(mi)
+		// servingGroupName is used to find roleList.
+		// It will not affect the calculation of minTaskMember.
+		minMember, minTaskMember, minResources := manager.calculateRequirements(mi, "test-serving-group")
 
 		// Should have no requirements
 		assert.Equal(t, 0, minMember)
@@ -177,13 +191,16 @@ func TestCalculateRequirements(t *testing.T) {
 	})
 
 	t.Run("role with no worker template", func(t *testing.T) {
-		manager := NewManager(nil, nil)
+		store := datastore.New()
+		manager := NewManager(nil, nil, store)
 		mi := createBasicModelServing()
 
 		// Modify one role to have no worker template
 		mi.Spec.Template.Roles[1].WorkerTemplate = nil
 		mi.Spec.Template.Roles[1].WorkerReplicas = 0
-		minMember, minTaskMember, _ := manager.calculateRequirements(mi)
+		// servingGroupName is used to find roleList.
+		// It will not affect the calculation of minTaskMember.
+		minMember, minTaskMember, _ := manager.calculateRequirements(mi, "test-serving-group")
 
 		// For 2 prefill roles (each with 1 entry + 3 workers) and 1 decode role (1 entry only)
 		// Total pods = (1+3)*2 + (1+0)*1 = 8 + 1 = 9
@@ -199,13 +216,16 @@ func TestCalculateRequirements(t *testing.T) {
 	})
 
 	t.Run("zero worker replicas", func(t *testing.T) {
-		manager := NewManager(nil, nil)
+		store := datastore.New()
+		manager := NewManager(nil, nil, store)
 		mi := createBasicModelServing()
 
 		// Set worker replicas to zero for one role
 		mi.Spec.Template.Roles[0].WorkerReplicas = 0
 
-		minMember, minTaskMember, _ := manager.calculateRequirements(mi)
+		// servingGroupName is used to find roleList.
+		// It will not affect the calculation of minTaskMember.
+		minMember, minTaskMember, _ := manager.calculateRequirements(mi, "test-serving-group")
 
 		// For 2 prefill roles (each with 1 entry + 0 workers) and 1 decode role (1 entry + 2 workers)
 		// Total pods = (1+0)*2 + (1+2)*1 = 2 + 3 = 5
@@ -223,7 +243,8 @@ func TestCalculateRequirements(t *testing.T) {
 
 func TestAggregateResources(t *testing.T) {
 	t.Run("basic aggregation", func(t *testing.T) {
-		manager := NewManager(nil, nil)
+		store := datastore.New()
+		manager := NewManager(nil, nil, store)
 		total := corev1.ResourceList{}
 
 		podSpec := &corev1.PodSpec{
@@ -259,7 +280,8 @@ func TestAggregateResources(t *testing.T) {
 	})
 
 	t.Run("nil total resource list", func(t *testing.T) {
-		manager := NewManager(nil, nil)
+		store := datastore.New()
+		manager := NewManager(nil, nil, store)
 		var total corev1.ResourceList = nil
 
 		podSpec := &corev1.PodSpec{
@@ -283,7 +305,8 @@ func TestAggregateResources(t *testing.T) {
 	})
 
 	t.Run("empty containers", func(t *testing.T) {
-		manager := NewManager(nil, nil)
+		store := datastore.New()
+		manager := NewManager(nil, nil, store)
 		total := corev1.ResourceList{}
 
 		podSpec := &corev1.PodSpec{
@@ -296,7 +319,8 @@ func TestAggregateResources(t *testing.T) {
 	})
 
 	t.Run("nil containers", func(t *testing.T) {
-		manager := NewManager(nil, nil)
+		store := datastore.New()
+		manager := NewManager(nil, nil, store)
 		total := corev1.ResourceList{}
 
 		podSpec := &corev1.PodSpec{
@@ -309,7 +333,8 @@ func TestAggregateResources(t *testing.T) {
 	})
 
 	t.Run("container with no resources", func(t *testing.T) {
-		manager := NewManager(nil, nil)
+		store := datastore.New()
+		manager := NewManager(nil, nil, store)
 		total := corev1.ResourceList{}
 
 		podSpec := &corev1.PodSpec{
@@ -327,7 +352,8 @@ func TestAggregateResources(t *testing.T) {
 	})
 
 	t.Run("container with empty resources", func(t *testing.T) {
-		manager := NewManager(nil, nil)
+		store := datastore.New()
+		manager := NewManager(nil, nil, store)
 		total := corev1.ResourceList{}
 
 		podSpec := &corev1.PodSpec{
@@ -347,7 +373,8 @@ func TestAggregateResources(t *testing.T) {
 	})
 
 	t.Run("multiple calls to aggregate resources", func(t *testing.T) {
-		manager := NewManager(nil, nil)
+		store := datastore.New()
+		manager := NewManager(nil, nil, store)
 		total := corev1.ResourceList{}
 
 		podSpec1 := &corev1.PodSpec{
@@ -386,7 +413,8 @@ func TestAggregateResources(t *testing.T) {
 	})
 
 	t.Run("different resource types", func(t *testing.T) {
-		manager := NewManager(nil, nil)
+		store := datastore.New()
+		manager := NewManager(nil, nil, store)
 		total := corev1.ResourceList{}
 
 		podSpec := &corev1.PodSpec{
@@ -413,7 +441,8 @@ func TestAggregateResources(t *testing.T) {
 	})
 
 	t.Run("existing resources get updated", func(t *testing.T) {
-		manager := NewManager(nil, nil)
+		store := datastore.New()
+		manager := NewManager(nil, nil, store)
 		total := corev1.ResourceList{
 			corev1.ResourceCPU: resource.MustParse("1"),
 		}
@@ -490,7 +519,8 @@ func TestGetExistingPodGroups(t *testing.T) {
 	t.Run("successful retrieval of existing pod groups", func(t *testing.T) {
 		// Create fake volcano client with test data
 		fakeVolcanoClient := volcanofake.NewSimpleClientset(podGroup1, podGroup2, podGroup3, podGroupDifferentNamespace)
-		manager := NewManager(nil, fakeVolcanoClient)
+		store := datastore.New()
+		manager := NewManager(nil, fakeVolcanoClient, store)
 
 		result, err := manager.getExistingPodGroups(context.Background(), modelServing)
 
@@ -514,7 +544,8 @@ func TestGetExistingPodGroups(t *testing.T) {
 	t.Run("no existing pod groups", func(t *testing.T) {
 		// Create fake volcano client with only unrelated pod groups
 		fakeVolcanoClient := volcanofake.NewSimpleClientset(podGroup3)
-		manager := NewManager(nil, fakeVolcanoClient)
+		store := datastore.New()
+		manager := NewManager(nil, fakeVolcanoClient, store)
 
 		result, err := manager.getExistingPodGroups(context.Background(), modelServing)
 
@@ -527,7 +558,8 @@ func TestGetExistingPodGroups(t *testing.T) {
 	t.Run("empty pod group list", func(t *testing.T) {
 		// Create fake volcano client with no pod groups
 		fakeVolcanoClient := volcanofake.NewSimpleClientset()
-		manager := NewManager(nil, fakeVolcanoClient)
+		store := datastore.New()
+		manager := NewManager(nil, fakeVolcanoClient, store)
 
 		result, err := manager.getExistingPodGroups(context.Background(), modelServing)
 
@@ -540,7 +572,8 @@ func TestGetExistingPodGroups(t *testing.T) {
 	t.Run("pod group with same name in different namespace", func(t *testing.T) {
 		// Create fake volcano client with pod groups
 		fakeVolcanoClient := volcanofake.NewSimpleClientset(podGroup1, podGroupDifferentNamespace)
-		manager := NewManager(nil, fakeVolcanoClient)
+		store := datastore.New()
+		manager := NewManager(nil, fakeVolcanoClient, store)
 
 		result, err := manager.getExistingPodGroups(context.Background(), modelServing)
 
@@ -554,7 +587,8 @@ func TestGetExistingPodGroups(t *testing.T) {
 
 	t.Run("nil model Serving parameter", func(t *testing.T) {
 		fakeVolcanoClient := volcanofake.NewSimpleClientset(podGroup1)
-		manager := NewManager(nil, fakeVolcanoClient)
+		store := datastore.New()
+		manager := NewManager(nil, fakeVolcanoClient, store)
 
 		// Test with nil ModelServing - this would cause a panic in the real code
 		// but we're checking that our test handles it gracefully
@@ -745,4 +779,181 @@ func TestEqualResourceList(t *testing.T) {
 
 		assert.False(t, equalResourceList(a, b))
 	})
+}
+
+func TestNeedHandledRoleNameList(t *testing.T) {
+	tests := []struct {
+		name             string
+		expectedReplicas int
+		existRoleList    []datastore.Role
+		roleName         string
+		expectedResult   []string
+	}{
+		{
+			name:             "scale up from zero",
+			expectedReplicas: 3,
+			existRoleList:    []datastore.Role{},
+			roleName:         "test-role",
+			expectedResult: []string{
+				utils.GenerateRoleID("test-role", 0),
+				utils.GenerateRoleID("test-role", 1),
+				utils.GenerateRoleID("test-role", 2),
+			},
+		},
+		{
+			name:             "scale up from existing roles",
+			expectedReplicas: 5,
+			existRoleList: []datastore.Role{
+				{Name: utils.GenerateRoleID("test-role", 0)},
+				{Name: utils.GenerateRoleID("test-role", 1)},
+			},
+			roleName: "test-role",
+			expectedResult: []string{
+				utils.GenerateRoleID("test-role", 0),
+				utils.GenerateRoleID("test-role", 1),
+				utils.GenerateRoleID("test-role", 2),
+				utils.GenerateRoleID("test-role", 3),
+				utils.GenerateRoleID("test-role", 4),
+			},
+		},
+		{
+			name:             "scale up with gap in indices",
+			expectedReplicas: 4,
+			existRoleList: []datastore.Role{
+				{Name: utils.GenerateRoleID("test-role", 0)},
+				{Name: utils.GenerateRoleID("test-role", 2)},
+			},
+			roleName: "test-role",
+			expectedResult: []string{
+				utils.GenerateRoleID("test-role", 0),
+				utils.GenerateRoleID("test-role", 1),
+				utils.GenerateRoleID("test-role", 2),
+				utils.GenerateRoleID("test-role", 3),
+			},
+		},
+		{
+			name:             "scale up, exist role index is larger than expectedReplicas",
+			expectedReplicas: 3,
+			existRoleList: []datastore.Role{
+				{Name: utils.GenerateRoleID("test-role", 10)},
+				{Name: utils.GenerateRoleID("test-role", 11)},
+			},
+			roleName: "test-role",
+			expectedResult: []string{
+				utils.GenerateRoleID("test-role", 10),
+				utils.GenerateRoleID("test-role", 11),
+				utils.GenerateRoleID("test-role", 0),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := needHandledRoleNameList(tt.expectedReplicas, tt.existRoleList, tt.roleName)
+			assert.Equal(t, tt.expectedResult, result)
+		})
+	}
+}
+
+func TestNeededHandledPodGroupNameList(t *testing.T) {
+	testModelServing := &workloadv1alpha1.ModelServing{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-model",
+			Namespace: "default",
+		},
+		Spec: workloadv1alpha1.ModelServingSpec{
+			Replicas: ptr.To(int32(3)),
+		},
+	}
+
+	tests := []struct {
+		name             string
+		expectedReplicas int
+		modelServing     *workloadv1alpha1.ModelServing
+		servingGroupList []datastore.ServingGroup
+		expectedResult   []string
+	}{
+		{
+			name:             "scale down scenario - more existing groups than expected",
+			expectedReplicas: 2,
+			modelServing:     testModelServing,
+			servingGroupList: []datastore.ServingGroup{
+				{Name: utils.GenerateServingGroupName("test-model", 0)},
+				{Name: utils.GenerateServingGroupName("test-model", 1)},
+				{Name: utils.GenerateServingGroupName("test-model", 2)},
+				{Name: utils.GenerateServingGroupName("test-model", 3)},
+			},
+			expectedResult: []string{
+				utils.GenerateServingGroupName("test-model", 0),
+				utils.GenerateServingGroupName("test-model", 1),
+				utils.GenerateServingGroupName("test-model", 2),
+				utils.GenerateServingGroupName("test-model", 3),
+			},
+		},
+		{
+			name:             "scale up scenario - fewer existing groups than expected",
+			expectedReplicas: 4,
+			modelServing:     testModelServing,
+			servingGroupList: []datastore.ServingGroup{
+				{Name: utils.GenerateServingGroupName("test-model", 0)},
+				{Name: utils.GenerateServingGroupName("test-model", 1)},
+			},
+			expectedResult: []string{
+				utils.GenerateServingGroupName("test-model", 0),
+				utils.GenerateServingGroupName("test-model", 1),
+				utils.GenerateServingGroupName("test-model", 2),
+				utils.GenerateServingGroupName("test-model", 3),
+			},
+		},
+		{
+			name:             "equal scenario - existing groups equal to expected",
+			expectedReplicas: 3,
+			modelServing:     testModelServing,
+			servingGroupList: []datastore.ServingGroup{
+				{Name: utils.GenerateServingGroupName("test-model", 0)},
+				{Name: utils.GenerateServingGroupName("test-model", 1)},
+				{Name: utils.GenerateServingGroupName("test-model", 2)},
+			},
+			expectedResult: []string{
+				utils.GenerateServingGroupName("test-model", 0),
+				utils.GenerateServingGroupName("test-model", 1),
+				utils.GenerateServingGroupName("test-model", 2),
+			},
+		},
+		{
+			name:             "empty serving group list - pure scale up",
+			expectedReplicas: 3,
+			modelServing:     testModelServing,
+			servingGroupList: []datastore.ServingGroup{},
+			expectedResult: []string{
+				utils.GenerateServingGroupName("test-model", 0),
+				utils.GenerateServingGroupName("test-model", 1),
+				utils.GenerateServingGroupName("test-model", 2),
+			},
+		},
+		{
+			name:             "gap in indices",
+			expectedReplicas: 5,
+			modelServing:     testModelServing,
+			servingGroupList: []datastore.ServingGroup{
+				{Name: utils.GenerateServingGroupName("test-model", 0)},
+				{Name: utils.GenerateServingGroupName("test-model", 2)},
+				{Name: utils.GenerateServingGroupName("test-model", 4)},
+			},
+			expectedResult: []string{
+				utils.GenerateServingGroupName("test-model", 0),
+				utils.GenerateServingGroupName("test-model", 1),
+				utils.GenerateServingGroupName("test-model", 2),
+				utils.GenerateServingGroupName("test-model", 3),
+				utils.GenerateServingGroupName("test-model", 4),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := neededHandledPodGroupNameList(tt.expectedReplicas, tt.modelServing, tt.servingGroupList)
+			assert.Equal(t, tt.expectedResult, result)
+		})
+	}
 }

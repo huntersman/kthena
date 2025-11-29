@@ -18,6 +18,7 @@ package gangscheduling
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -33,19 +34,23 @@ import (
 	volcanoclient "volcano.sh/apis/pkg/client/clientset/versioned"
 
 	workloadv1alpha1 "github.com/volcano-sh/kthena/pkg/apis/workload/v1alpha1"
+	"github.com/volcano-sh/kthena/pkg/model-serving-controller/datastore"
+	"github.com/volcano-sh/kthena/pkg/model-serving-controller/utils"
 )
 
 // Manager manages PodGroups for gang scheduling
 type Manager struct {
 	kubeClient    kubernetes.Interface
 	volcanoClient volcanoclient.Interface
+	store         datastore.Store
 }
 
 // NewManager creates a new gang scheduling manager
-func NewManager(kubeClient kubernetes.Interface, volcanoClient volcanoclient.Interface) Manager {
+func NewManager(kubeClient kubernetes.Interface, volcanoClient volcanoclient.Interface, store datastore.Store) Manager {
 	return Manager{
 		kubeClient:    kubeClient,
 		volcanoClient: volcanoClient,
+		store:         store,
 	}
 }
 
@@ -79,9 +84,15 @@ func (m *Manager) managePodGroups(ctx context.Context, mi *workloadv1alpha1.Mode
 		return fmt.Errorf("failed to get existing PodGroups: %v", err)
 	}
 
+	servingGroupList, err := m.store.GetServingGroupByModelServing(utils.GetNamespaceName(mi))
+	if err != nil && !errors.Is(err, datastore.ErrServingGroupNotFound) {
+		return fmt.Errorf("failed to get ServingGroups for ModelServing %s: %v", utils.GetNamespaceName(mi), err)
+	}
+
+	neededHandledPodGroupNameList := neededHandledPodGroupNameList(expectedReplicas, mi, servingGroupList)
 	// Create or update PodGroups for each ServingGroup
-	for i := 0; i < expectedReplicas; i++ {
-		podGroupName := m.generatePodGroupName(mi.Name, i)
+	for _, podGroupName := range neededHandledPodGroupNameList {
+		// podGroupName := m.generatePodGroupName(mi.Name, i)
 
 		if existingPG, exists := existingPodGroups[podGroupName]; exists {
 			// Update existing PodGroup if needed
@@ -90,22 +101,23 @@ func (m *Manager) managePodGroups(ctx context.Context, mi *workloadv1alpha1.Mode
 			}
 		} else {
 			// Create new PodGroup
-			if err := m.createPodGroup(ctx, mi, i); err != nil {
+			if err := m.createPodGroup(ctx, mi, podGroupName); err != nil {
 				return fmt.Errorf("failed to create PodGroup %s: %v", podGroupName, err)
 			}
 		}
 	}
 
 	// Clean up excess PodGroups
+	// As insurance
 	return m.cleanupExcessPodGroups(ctx, mi, existingPodGroups, expectedReplicas)
 }
 
 // createPodGroup creates a PodGroup for group-level gang scheduling
-func (m *Manager) createPodGroup(ctx context.Context, mi *workloadv1alpha1.ModelServing, groupIndex int) error {
-	podGroupName := m.generatePodGroupName(mi.Name, groupIndex)
+func (m *Manager) createPodGroup(ctx context.Context, mi *workloadv1alpha1.ModelServing, podGroupName string) error {
+	// podGroupName := m.generatePodGroupName(mi.Name, groupIndex)
 
 	// Calculate total pods and resources for this ServingGroup
-	minMember, minTaskMember, minResources := m.calculateRequirements(mi)
+	minMember, minTaskMember, minResources := m.calculateRequirements(mi, podGroupName)
 
 	podGroup := &schedulingv1beta1.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
@@ -151,7 +163,7 @@ func (m *Manager) buildOwnerReference(mi *workloadv1alpha1.ModelServing) []metav
 }
 
 // calculateRequirements calculates requirements for role-level gang scheduling
-func (m *Manager) calculateRequirements(mi *workloadv1alpha1.ModelServing) (int, map[string]int32, corev1.ResourceList) {
+func (m *Manager) calculateRequirements(mi *workloadv1alpha1.ModelServing, podGroupName string) (int, map[string]int32, corev1.ResourceList) {
 	minMember := 0
 	minTaskMember := make(map[string]int32)
 	minResources := corev1.ResourceList{}
@@ -167,9 +179,26 @@ func (m *Manager) calculateRequirements(mi *workloadv1alpha1.ModelServing) (int,
 			}
 		}
 
+		expectReplicas := min(minRoleReplicas, roleReplicas)
+		roleList, err := m.store.GetRoleList(utils.GetNamespaceName(mi), podGroupName, role.Name)
+		if err != nil {
+			klog.V(2).Infof("Failed to get role list for role %s: %v", role.Name, err)
+		}
+		// During scaling operations, podGroup does not affect scaling policies.
+		// Under the binpack scaling strategy, it is unknown which role replicas will be deleted.
+		// Therefore, no action is taken during scaling.
+		// PodGroup will updated after the role completes scaling down.
+		if len(roleList) > expectReplicas {
+			continue
+		}
+		// When length(roleList) <= expectReplicas, that is, when scaling up or updating.
+		// Provide the roleNameList to be updated.
+		needHandledRoleNameList := needHandledRoleNameList(expectReplicas, roleList, role.Name)
+
 		// Only include role replicas up to the minimum required
-		for roleIndex := 0; roleIndex < minRoleReplicas && roleIndex < roleReplicas; roleIndex++ {
-			taskName := m.GenerateTaskName(role.Name, roleIndex)
+		// for roleIndex := 0; roleIndex < minRoleReplicas && roleIndex < roleReplicas; roleIndex++ {
+		for _, taskName := range needHandledRoleNameList {
+			// taskName := m.GenerateTaskName(role.Name, roleIndex)
 			podsPerTask := 1 + int(role.WorkerReplicas) // entry + workers
 			minTaskMember[taskName] = int32(podsPerTask)
 			minMember += podsPerTask
@@ -183,7 +212,7 @@ func (m *Manager) calculateRequirements(mi *workloadv1alpha1.ModelServing) (int,
 			}
 		}
 	}
-
+	fmt.Printf("minMember: %d, minTaskMember: %v, minResources: %v\n", minMember, minTaskMember, minResources)
 	return minMember, minTaskMember, minResources
 }
 
@@ -240,7 +269,7 @@ func (m *Manager) getExistingPodGroups(ctx context.Context, mi *workloadv1alpha1
 // updatePodGroupIfNeeded updates a PodGroup if needed for group-level scheduling
 func (m *Manager) updatePodGroupIfNeeded(ctx context.Context, existing *schedulingv1beta1.PodGroup, mi *workloadv1alpha1.ModelServing) error {
 	// Calculate current requirements
-	minMember, minTaskMember, minResources := m.calculateRequirements(mi)
+	minMember, minTaskMember, minResources := m.calculateRequirements(mi, existing.GetName())
 
 	needsUpdate := false
 	updated := existing.DeepCopy()
@@ -276,6 +305,15 @@ func (m *Manager) updatePodGroupIfNeeded(ctx context.Context, existing *scheduli
 		klog.V(2).Infof("Updated PodGroup %s for group-level gang scheduling", existing.Name)
 	}
 
+	return nil
+}
+
+func (m *Manager) DeletePodGroupWhenServingGroupDeleted(ctx context.Context, mi *workloadv1alpha1.ModelServing, servingGroupName string) error {
+	if err := m.volcanoClient.SchedulingV1beta1().PodGroups(mi.Namespace).Delete(ctx, servingGroupName, metav1.DeleteOptions{}); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -392,4 +430,48 @@ func equalVolcanoNetworkTopology(a, b *schedulingv1beta1.NetworkTopologySpec) bo
 	// Both are non-nil, compare their values
 	return a.Mode == b.Mode &&
 		a.HighestTierAllowed == b.HighestTierAllowed
+}
+
+// neededHandlerPodGroupNameList returns the list of PodGroup names that need to be handled
+func neededHandledPodGroupNameList(expectedReplicas int, mi *workloadv1alpha1.ModelServing, servingGroupNameList []datastore.ServingGroup) []string {
+	// Changes to the PodGroup will not affect Pods that have already been deployed.
+	// During binpack scale down, it is unknown which ServingGroup will be deleted.
+	// Therefore, return all podGroup names that exist.
+	// Deletion of PodGroups is handled when ServingGroups are deleted.
+	podGroupNameListlength := max(expectedReplicas, len(servingGroupNameList))
+
+	nameList := make([]string, 0, podGroupNameListlength)
+	for _, group := range servingGroupNameList {
+		_, index := utils.GetParentNameAndOrdinal(group.Name)
+		if index > podGroupNameListlength-1 {
+			nameList = append(nameList, group.Name)
+			podGroupNameListlength = podGroupNameListlength - 1
+		}
+	}
+
+	for i := 0; i < podGroupNameListlength; i++ {
+		nameList = append(nameList, utils.GenerateServingGroupName(mi.GetName(), i))
+	}
+	return nameList
+}
+
+// NeedHandledRoleNameList is used in Role scale up scenario to get the roleName list that need scale up.
+// Therefore, the default value for `expectedReplicas` is greater than `length(RoleList)`.
+// Or the Role update scenario. (This scenario is This scenario is relatively rare. Since it is not permitted to modify an already configured gangPolicy,
+// and in practical applications, the workerReplicas within a deployed role are rarely altered.)
+func needHandledRoleNameList(expectedReplicas int, existRoleList []datastore.Role, roleName string) []string {
+	scaleUpRoleNameList := make([]string, 0, expectedReplicas)
+
+	for _, role := range existRoleList {
+		_, index := utils.GetParentNameAndOrdinal(role.Name)
+		if index > expectedReplicas-1 {
+			scaleUpRoleNameList = append(scaleUpRoleNameList, role.Name)
+			expectedReplicas = expectedReplicas - 1
+		}
+	}
+
+	for i := 0; i < expectedReplicas; i++ {
+		scaleUpRoleNameList = append(scaleUpRoleNameList, utils.GenerateRoleID(roleName, i))
+	}
+	return scaleUpRoleNameList
 }
