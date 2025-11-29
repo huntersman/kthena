@@ -574,18 +574,22 @@ func (c *ModelServingController) manageServingGroupReplicas(ctx context.Context,
 // scaleUpServingGroups scales up the ServingGroups to the expected count.
 // It creates new ServingGroups with increasing indices starting from the current max index + 1.
 func (c *ModelServingController) scaleUpServingGroups(ctx context.Context, mi *workloadv1alpha1.ModelServing, servingGroupList []datastore.ServingGroup, expectedCount int, newRevision string) error {
-	// Find the maximum existing index to determine the starting point for new ServingGroups
+	// Find the maximum existing valid index to determine the starting point for new ServingGroups
+	// Also count only ServingGroups with valid ordinals
 	maxIndex := -1
+	validCount := 0
 	for _, group := range servingGroupList {
 		_, servingGroupOrdinal := utils.GetParentNameAndOrdinal(group.Name)
-		if servingGroupOrdinal > maxIndex {
-			maxIndex = servingGroupOrdinal
+		if servingGroupOrdinal >= 0 {
+			validCount++
+			if servingGroupOrdinal > maxIndex {
+				maxIndex = servingGroupOrdinal
+			}
 		}
 	}
 
 	// Calculate how many new ServingGroups we need to create
-	currentCount := len(servingGroupList)
-	toCreate := expectedCount - currentCount
+	toCreate := expectedCount - validCount
 
 	// Create new ServingGroups with increasing indices
 	for i := 0; i < toCreate; i++ {
