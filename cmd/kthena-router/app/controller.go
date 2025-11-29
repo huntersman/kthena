@@ -101,7 +101,7 @@ func startControllers(store datastore.Store, stop <-chan struct{}, enableGateway
 		}
 
 		gatewayInformerFactory := gatewayinformers.NewSharedInformerFactory(gatewayClient, 0)
-		gatewayController := controller.NewGatewayController(gatewayInformerFactory, kubeClient, store)
+		gatewayController := controller.NewGatewayController(gatewayInformerFactory, store)
 
 		gatewayInformerFactory.Start(stop)
 
