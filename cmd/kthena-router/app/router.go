@@ -48,14 +48,13 @@ func NewRouter(store datastore.Store) *router.Router {
 func (s *Server) startRouter(ctx context.Context, router *router.Router, store datastore.Store) {
 	gin.SetMode(gin.ReleaseMode)
 
-	// Always start default server on fixed port
-	s.startDefaultServer(ctx, router, store)
-
 	// Gateway API features are optional
 	if s.EnableGatewayAPI {
 		// Create listener manager for dynamic Gateway listener management
 		listenerManager := NewListenerManager(ctx, router, store, s)
 		s.listenerManager = listenerManager
+
+		// Default gateway is created in startControllers, so it will be handled by the callback
 
 		// Register callback to handle Gateway events dynamically
 		store.RegisterCallback("Gateway", func(data datastore.EventData) {
@@ -82,6 +81,8 @@ func (s *Server) startRouter(ctx context.Context, router *router.Router, store d
 			}
 		}
 	} else {
+		// When gateway-api is disabled, start standalone default server
+		s.startDefaultServer(ctx, router, store)
 		klog.Info("Gateway API features are disabled")
 	}
 }
@@ -241,6 +242,73 @@ func (lm *ListenerManager) findBestMatchingListener(port int32, hostname string)
 // createPortHandler creates a gin handler for a specific port that routes to the best matching listener
 func (lm *ListenerManager) createPortHandler(port int32) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Handle management endpoints first (healthz, readyz, metrics, debug)
+		path := c.Request.URL.Path
+		if path == "/healthz" {
+			c.JSON(http.StatusOK, gin.H{
+				"message": "ok",
+			})
+			return
+		}
+		if path == "/readyz" {
+			if lm.server.HasSynced() {
+				c.JSON(http.StatusOK, gin.H{
+					"message": "router is ready",
+				})
+			} else {
+				c.JSON(http.StatusServiceUnavailable, gin.H{
+					"message": "router is not ready",
+				})
+			}
+			return
+		}
+		if path == "/metrics" {
+			promhttp.Handler().ServeHTTP(c.Writer, c.Request)
+			return
+		}
+		if strings.HasPrefix(path, "/debug/config_dump") {
+			debugHandler := debug.NewDebugHandler(lm.store)
+			// Handle list endpoints
+			if path == "/debug/config_dump/modelroutes" {
+				debugHandler.ListModelRoutes(c)
+				return
+			}
+			if path == "/debug/config_dump/modelservers" {
+				debugHandler.ListModelServers(c)
+				return
+			}
+			if path == "/debug/config_dump/pods" {
+				debugHandler.ListPods(c)
+				return
+			}
+			// Handle parameterized debug routes
+			if strings.HasPrefix(path, "/debug/config_dump/namespaces/") {
+				parts := strings.Split(strings.TrimPrefix(path, "/debug/config_dump/namespaces/"), "/")
+				if len(parts) == 3 {
+					namespace := parts[0]
+					resourceType := parts[1]
+					name := parts[2]
+					// Set params for gin context
+					c.Params = []gin.Param{
+						{Key: "namespace", Value: namespace},
+						{Key: "name", Value: name},
+					}
+					if resourceType == "modelroutes" {
+						debugHandler.GetModelRoute(c)
+						return
+					}
+					if resourceType == "modelservers" {
+						debugHandler.GetModelServer(c)
+						return
+					}
+					if resourceType == "pods" {
+						debugHandler.GetPod(c)
+						return
+					}
+				}
+			}
+		}
+
 		hostname := c.Request.Host
 		// Remove port from hostname if present
 		if idx := strings.Index(hostname, ":"); idx != -1 {
@@ -345,7 +413,7 @@ func (lm *ListenerManager) removeListenerFromPort(port int32, configToRemove Lis
 }
 
 // addListenerToPort adds a listener config to a port
-func (lm *ListenerManager) addListenerToPort(port int32, config ListenerConfig) {
+func (lm *ListenerManager) addListenerToPort(port int32, config ListenerConfig, enableTLS bool, tlsCertFile, tlsKeyFile string) {
 	portInfo, exists := lm.portListeners[port]
 	if !exists {
 		// Create new port listener
@@ -369,13 +437,21 @@ func (lm *ListenerManager) addListenerToPort(port int32, config ListenerConfig) 
 		portInfo.ShutdownFunc = cancel
 
 		// Start the server
-		go func(p int32, srv *http.Server, ctx context.Context) {
+		go func(p int32, srv *http.Server, ctx context.Context, tls bool, cert, key string) {
 			klog.Infof("Starting Gateway listener server on port %d", p)
-			err := srv.ListenAndServe()
+			var err error
+			if tls {
+				if cert == "" || key == "" {
+					klog.Fatalf("TLS enabled but cert or key file not specified for port %d", p)
+				}
+				err = srv.ListenAndServeTLS(cert, key)
+			} else {
+				err = srv.ListenAndServe()
+			}
 			if err != nil && err != http.ErrServerClosed {
 				klog.Errorf("listen failed for port %d: %v", p, err)
 			}
-		}(port, server, listenerCtx)
+		}(port, server, listenerCtx, enableTLS, tlsCertFile, tlsKeyFile)
 
 		// Start graceful shutdown goroutine
 		go func(p int32, srv *http.Server, cancel context.CancelFunc) {
@@ -429,7 +505,17 @@ func (lm *ListenerManager) StartListenersForGateway(gateway *gatewayv1.Gateway) 
 	// Find listeners to add (in new but not in old)
 	for key, config := range newConfigMap {
 		if _, exists := oldConfigMap[key]; !exists {
-			lm.addListenerToPort(config.Port, config)
+			// Check if this is the default port to determine TLS settings
+			defaultPort, _ := strconv.Atoi(lm.server.Port)
+			enableTLS := false
+			tlsCertFile := ""
+			tlsKeyFile := ""
+			if int32(defaultPort) == config.Port {
+				enableTLS = lm.server.EnableTLS
+				tlsCertFile = lm.server.TLSCertFile
+				tlsKeyFile = lm.server.TLSKeyFile
+			}
+			lm.addListenerToPort(config.Port, config, enableTLS, tlsCertFile, tlsKeyFile)
 		}
 	}
 

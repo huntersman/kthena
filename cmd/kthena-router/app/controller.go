@@ -19,6 +19,8 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,7 +48,7 @@ type aggregatedController struct {
 
 var _ Controller = &aggregatedController{}
 
-func startControllers(store datastore.Store, stop <-chan struct{}, enableGatewayAPI bool) Controller {
+func startControllers(store datastore.Store, stop <-chan struct{}, enableGatewayAPI bool, defaultPort string) Controller {
 	cfg, err := clientcmd.BuildConfigFromFlags("", "")
 	if err != nil {
 		klog.Fatalf("Error building kubeconfig: %s", err.Error())
@@ -98,6 +100,11 @@ func startControllers(store datastore.Store, stop <-chan struct{}, enableGateway
 		// Ensure default GatewayClass exists before starting controllers
 		if err := ensureDefaultGatewayClass(gatewayClient); err != nil {
 			klog.Fatalf("Failed to ensure default GatewayClass: %s", err.Error())
+		}
+
+		// Ensure default Gateway exists before starting controllers
+		if err := ensureDefaultGateway(gatewayClient, defaultPort); err != nil {
+			klog.Fatalf("Failed to ensure default Gateway: %s", err.Error())
 		}
 
 		gatewayInformerFactory := gatewayinformers.NewSharedInformerFactory(gatewayClient, 0)
@@ -165,5 +172,65 @@ func ensureDefaultGatewayClass(gatewayClient gatewayclientset.Interface) error {
 	}
 
 	klog.Infof("Created default GatewayClass %s", controller.DefaultGatewayClassName)
+	return nil
+}
+
+// ensureDefaultGateway creates the default Gateway if it doesn't exist
+func ensureDefaultGateway(gatewayClient gatewayclientset.Interface, defaultPort string) error {
+	ctx := context.Background()
+	namespace := "default"
+	name := "default"
+
+	// Get namespace from environment variable if available, otherwise use "default"
+	if podNamespace := os.Getenv("POD_NAMESPACE"); podNamespace != "" {
+		namespace = podNamespace
+	}
+
+	// Parse port
+	port, err := strconv.Atoi(defaultPort)
+	if err != nil {
+		return fmt.Errorf("invalid default port %s: %w", defaultPort, err)
+	}
+
+	// Check if Gateway already exists
+	_, err = gatewayClient.GatewayV1().Gateways(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err == nil {
+		klog.V(2).Infof("Default Gateway %s/%s already exists", namespace, name)
+		return nil
+	}
+
+	if !apierrors.IsNotFound(err) {
+		return fmt.Errorf("failed to check Gateway %s/%s: %w", namespace, name, err)
+	}
+
+	// Create the default Gateway
+	gateway := &gatewayv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: gatewayv1.GatewaySpec{
+			GatewayClassName: gatewayv1.ObjectName(controller.DefaultGatewayClassName),
+			Listeners: []gatewayv1.Listener{
+				{
+					Name:     gatewayv1.SectionName("default"),
+					Port:     gatewayv1.PortNumber(port),
+					Protocol: gatewayv1.HTTPProtocolType,
+					// Hostname is nil, meaning match all hostnames
+				},
+			},
+		},
+	}
+
+	_, err = gatewayClient.GatewayV1().Gateways(namespace).Create(ctx, gateway, metav1.CreateOptions{})
+	if err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			klog.V(2).Infof("Gateway %s/%s was created by another process", namespace, name)
+			return nil
+		}
+		return fmt.Errorf("failed to create Gateway %s/%s: %w", namespace, name, err)
+	}
+
+	klog.Infof("Created default Gateway %s/%s", namespace, name)
 	return nil
 }
