@@ -1548,3 +1548,152 @@ func verifyRoles(t *testing.T, controller *ModelServingController, mi *workloadv
 		}
 	}
 }
+
+// TestScaleUpServingGroups tests the scaleUpServingGroups function with various scenarios
+func TestScaleUpServingGroups(t *testing.T) {
+	tests := []struct {
+		name                string
+		existingIndices     []int  // Indices of existing ServingGroups
+		expectedCount       int    // Target count for scale up
+		expectedNewIndices  []int  // Expected indices for newly created groups
+		expectNoCreation    bool   // Whether no new groups should be created
+	}{
+		{
+			name:                "scale up from 0 to 2 groups",
+			existingIndices:     []int{},
+			expectedCount:       2,
+			expectedNewIndices:  []int{0, 1},
+			expectNoCreation:    false,
+		},
+		{
+			name:                "scale up from 1 to 3 groups with continuous indices",
+			existingIndices:     []int{0},
+			expectedCount:       3,
+			expectedNewIndices:  []int{1, 2},
+			expectNoCreation:    false,
+		},
+		{
+			name:                "scale up with gap in indices - should use increasing indices from max",
+			existingIndices:     []int{0, 5}, // Gap: indices 1-4 missing
+			expectedCount:       4,
+			expectedNewIndices:  []int{6, 7}, // Should continue from max index (5) + 1
+			expectNoCreation:    false,
+		},
+		{
+			name:                "scale up with only high index existing",
+			existingIndices:     []int{10},
+			expectedCount:       3,
+			expectedNewIndices:  []int{11, 12}, // Should continue from max index (10) + 1
+			expectNoCreation:    false,
+		},
+		{
+			name:                "no scale up needed - validCount equals expectedCount",
+			existingIndices:     []int{0, 1},
+			expectedCount:       2,
+			expectedNewIndices:  []int{},
+			expectNoCreation:    true,
+		},
+		{
+			name:                "no scale up needed - validCount exceeds expectedCount",
+			existingIndices:     []int{0, 1, 2},
+			expectedCount:       2,
+			expectedNewIndices:  []int{},
+			expectNoCreation:    true,
+		},
+		{
+			name:                "scale up from single group",
+			existingIndices:     []int{0},
+			expectedCount:       5,
+			expectedNewIndices:  []int{1, 2, 3, 4},
+			expectNoCreation:    false,
+		},
+	}
+
+	for idx, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create fresh fake clients for each test to ensure isolation
+			kubeClient := kubefake.NewSimpleClientset()
+			kthenaClient := kthenafake.NewSimpleClientset()
+			volcanoClient := volcanofake.NewSimpleClientset()
+
+			// Create controller without running it to avoid background sync interference
+			controller, err := NewModelServingController(kubeClient, kthenaClient, volcanoClient)
+			assert.NoError(t, err)
+
+			// Create a unique ModelServing for this test
+			miName := fmt.Sprintf("test-scaleup-%d", idx)
+			mi := &workloadv1alpha1.ModelServing{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      miName,
+				},
+				Spec: workloadv1alpha1.ModelServingSpec{
+					Replicas:      ptr.To[int32](int32(tt.expectedCount)),
+					SchedulerName: "volcano",
+					Template: workloadv1alpha1.ServingGroup{
+						Roles: []workloadv1alpha1.Role{
+							{
+								Name:     "prefill",
+								Replicas: ptr.To[int32](1),
+								EntryTemplate: workloadv1alpha1.PodTemplateSpec{
+									Spec: corev1.PodSpec{
+										Containers: []corev1.Container{
+											{
+												Name:  "prefill-container",
+												Image: "test-image:latest",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					RecoveryPolicy: workloadv1alpha1.RoleRecreate,
+				},
+			}
+
+			// Pre-populate the store with existing ServingGroups
+			for _, ordinal := range tt.existingIndices {
+				controller.store.AddServingGroup(utils.GetNamespaceName(mi), ordinal, "test-revision")
+			}
+
+			// Build the servingGroupList to pass to scaleUpServingGroups
+			existingGroups := make([]datastore.ServingGroup, len(tt.existingIndices))
+			for i, ordinal := range tt.existingIndices {
+				existingGroups[i] = datastore.ServingGroup{
+					Name: utils.GenerateServingGroupName(miName, ordinal),
+				}
+			}
+
+			// Call scaleUpServingGroups directly (not through syncModelServing)
+			err = controller.scaleUpServingGroups(context.Background(), mi, existingGroups, tt.expectedCount, "new-revision")
+			assert.NoError(t, err)
+
+			// Verify the results
+			groups, err := controller.store.GetServingGroupByModelServing(utils.GetNamespaceName(mi))
+			assert.NoError(t, err)
+
+			if tt.expectNoCreation {
+				// Verify no new groups were created
+				assert.Equal(t, len(tt.existingIndices), len(groups), "No new groups should be created")
+			} else {
+				// Verify new indices are as expected
+				for _, expectedIdx := range tt.expectedNewIndices {
+					expectedName := utils.GenerateServingGroupName(miName, expectedIdx)
+					found := false
+					for _, g := range groups {
+						if g.Name == expectedName {
+							found = true
+							break
+						}
+					}
+					assert.True(t, found, "Expected group %s to be created", expectedName)
+				}
+
+				// Verify total groups count
+				expectedTotal := len(tt.existingIndices) + len(tt.expectedNewIndices)
+				assert.Equal(t, expectedTotal, len(groups), "Total group count should match expected")
+			}
+		})
+	}
+}
