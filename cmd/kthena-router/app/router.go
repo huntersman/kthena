@@ -58,13 +58,11 @@ func (s *Server) startRouter(ctx context.Context, router *router.Router, store d
 
 		// Register callback to handle Gateway events dynamically
 		store.RegisterCallback("Gateway", func(data datastore.EventData) {
-			key := fmt.Sprintf("%s/%s", data.Pod.Namespace, data.Pod.Name)
+			key := fmt.Sprintf("%s/%s", data.Gateway.Namespace, data.Gateway.Name)
 			switch data.EventType {
 			case datastore.EventAdd, datastore.EventUpdate:
-				if gatewayObj := store.GetGateway(key); gatewayObj != nil {
-					if gw, ok := gatewayObj.(*gatewayv1.Gateway); ok {
-						listenerManager.StartListenersForGateway(gw)
-					}
+				if gw := store.GetGateway(key); gw != nil {
+					listenerManager.StartListenersForGateway(gw)
 				}
 			case datastore.EventDelete:
 				listenerManager.StopListenersForGateway(key)
@@ -74,11 +72,9 @@ func (s *Server) startRouter(ctx context.Context, router *router.Router, store d
 		// Initialize listeners for existing Gateways that were added before callback registration
 		// This ensures we don't lose Gateway events that occurred during controller startup
 		existingGateways := store.GetAllGateways()
-		for _, gatewayObj := range existingGateways {
-			if gw, ok := gatewayObj.(*gatewayv1.Gateway); ok {
-				klog.V(4).Infof("Initializing listeners for existing Gateway %s/%s", gw.Namespace, gw.Name)
-				listenerManager.StartListenersForGateway(gw)
-			}
+		for _, gw := range existingGateways {
+			klog.V(4).Infof("Initializing listeners for existing Gateway %s/%s", gw.Namespace, gw.Name)
+			listenerManager.StartListenersForGateway(gw)
 		}
 	} else {
 		// When gateway-api is disabled, start standalone default server
@@ -179,6 +175,7 @@ type ListenerConfig struct {
 
 // PortListenerInfo contains all listeners for a specific port
 type PortListenerInfo struct {
+	mu           sync.RWMutex
 	Server       *http.Server
 	ShutdownFunc context.CancelFunc
 	Listeners    []ListenerConfig
@@ -191,8 +188,9 @@ type ListenerManager struct {
 	router           *router.Router
 	store            datastore.Store
 	server           *Server
-	mu               sync.RWMutex
+	portMu           sync.RWMutex
 	portListeners    map[int32]*PortListenerInfo // key: port
+	gatewayMu        sync.RWMutex
 	gatewayListeners map[string][]ListenerConfig // key: gatewayKey, tracks listeners per gateway
 }
 
@@ -211,11 +209,17 @@ func NewListenerManager(ctx context.Context, router *router.Router, store datast
 // findBestMatchingListener finds the best matching listener for a request
 // Returns the listener config and true if found, nil and false otherwise
 func (lm *ListenerManager) findBestMatchingListener(port int32, hostname string) (*ListenerConfig, bool) {
-	lm.mu.RLock()
-	defer lm.mu.RUnlock()
-
+	lm.portMu.RLock()
 	portInfo, exists := lm.portListeners[port]
-	if !exists || len(portInfo.Listeners) == 0 {
+	lm.portMu.RUnlock()
+	if !exists {
+		return nil, false
+	}
+
+	portInfo.mu.RLock()
+	defer portInfo.mu.RUnlock()
+
+	if len(portInfo.Listeners) == 0 {
 		return nil, false
 	}
 
@@ -228,6 +232,7 @@ func (lm *ListenerManager) findBestMatchingListener(port int32, hostname string)
 	}
 
 	// If no exact match, try to find a listener without hostname restriction (wildcard)
+	// TODO: support wildcard hostname matching
 	for i := range portInfo.Listeners {
 		listener := &portInfo.Listeners[i]
 		if listener.Hostname == nil {
@@ -242,68 +247,70 @@ func (lm *ListenerManager) findBestMatchingListener(port int32, hostname string)
 // createPortHandler creates a gin handler for a specific port that routes to the best matching listener
 func (lm *ListenerManager) createPortHandler(port int32) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Handle management endpoints first (healthz, readyz, metrics, debug)
-		path := c.Request.URL.Path
-		if path == "/healthz" {
-			c.JSON(http.StatusOK, gin.H{
-				"message": "ok",
-			})
-			return
-		}
-		if path == "/readyz" {
-			if lm.server.HasSynced() {
+		if c.Request.URL.Port() == lm.server.Port {
+			// Handle management endpoints first (healthz, readyz, metrics, debug)
+			path := c.Request.URL.Path
+			if path == "/healthz" {
 				c.JSON(http.StatusOK, gin.H{
-					"message": "router is ready",
+					"message": "ok",
 				})
-			} else {
-				c.JSON(http.StatusServiceUnavailable, gin.H{
-					"message": "router is not ready",
-				})
-			}
-			return
-		}
-		if path == "/metrics" {
-			promhttp.Handler().ServeHTTP(c.Writer, c.Request)
-			return
-		}
-		if strings.HasPrefix(path, "/debug/config_dump") {
-			debugHandler := debug.NewDebugHandler(lm.store)
-			// Handle list endpoints
-			if path == "/debug/config_dump/modelroutes" {
-				debugHandler.ListModelRoutes(c)
 				return
 			}
-			if path == "/debug/config_dump/modelservers" {
-				debugHandler.ListModelServers(c)
+			if path == "/readyz" {
+				if lm.server.HasSynced() {
+					c.JSON(http.StatusOK, gin.H{
+						"message": "router is ready",
+					})
+				} else {
+					c.JSON(http.StatusServiceUnavailable, gin.H{
+						"message": "router is not ready",
+					})
+				}
 				return
 			}
-			if path == "/debug/config_dump/pods" {
-				debugHandler.ListPods(c)
+			if path == "/metrics" {
+				promhttp.Handler().ServeHTTP(c.Writer, c.Request)
 				return
 			}
-			// Handle parameterized debug routes
-			if strings.HasPrefix(path, "/debug/config_dump/namespaces/") {
-				parts := strings.Split(strings.TrimPrefix(path, "/debug/config_dump/namespaces/"), "/")
-				if len(parts) == 3 {
-					namespace := parts[0]
-					resourceType := parts[1]
-					name := parts[2]
-					// Set params for gin context
-					c.Params = []gin.Param{
-						{Key: "namespace", Value: namespace},
-						{Key: "name", Value: name},
-					}
-					if resourceType == "modelroutes" {
-						debugHandler.GetModelRoute(c)
-						return
-					}
-					if resourceType == "modelservers" {
-						debugHandler.GetModelServer(c)
-						return
-					}
-					if resourceType == "pods" {
-						debugHandler.GetPod(c)
-						return
+			if strings.HasPrefix(path, "/debug/config_dump") {
+				debugHandler := debug.NewDebugHandler(lm.store)
+				// Handle list endpoints
+				if path == "/debug/config_dump/modelroutes" {
+					debugHandler.ListModelRoutes(c)
+					return
+				}
+				if path == "/debug/config_dump/modelservers" {
+					debugHandler.ListModelServers(c)
+					return
+				}
+				if path == "/debug/config_dump/pods" {
+					debugHandler.ListPods(c)
+					return
+				}
+				// Handle parameterized debug routes
+				if strings.HasPrefix(path, "/debug/config_dump/namespaces/") {
+					parts := strings.Split(strings.TrimPrefix(path, "/debug/config_dump/namespaces/"), "/")
+					if len(parts) == 3 {
+						namespace := parts[0]
+						resourceType := parts[1]
+						name := parts[2]
+						// Set params for gin context
+						c.Params = []gin.Param{
+							{Key: "namespace", Value: namespace},
+							{Key: "name", Value: name},
+						}
+						if resourceType == "modelroutes" {
+							debugHandler.GetModelRoute(c)
+							return
+						}
+						if resourceType == "modelservers" {
+							debugHandler.GetModelServer(c)
+							return
+						}
+						if resourceType == "pods" {
+							debugHandler.GetPod(c)
+							return
+						}
 					}
 				}
 			}
@@ -323,10 +330,8 @@ func (lm *ListenerManager) createPortHandler(port int32) gin.HandlerFunc {
 			return
 		}
 
-		// Set listener info in context for potential use
-		c.Set("listenerConfig", listenerConfig)
 		// Set gateway key in context so router can filter ModelRoutes by gateway
-		c.Set("gatewayKey", listenerConfig.GatewayKey)
+		c.Set(router.GatewayKey, listenerConfig.GatewayKey)
 
 		// Apply middleware and route
 		AccessLogMiddleware(lm.router)(c)
@@ -397,11 +402,14 @@ func buildListenerConfigsFromGateway(gateway *gatewayv1.Gateway) []ListenerConfi
 
 // removeListenerFromPort removes a specific listener config from a port
 func (lm *ListenerManager) removeListenerFromPort(port int32, configToRemove ListenerConfig) {
+	lm.portMu.RLock()
 	portInfo, exists := lm.portListeners[port]
+	lm.portMu.RUnlock()
 	if !exists {
 		return
 	}
 
+	portInfo.mu.Lock()
 	filtered := portInfo.Listeners[:0]
 	for i := range portInfo.Listeners {
 		existing := &portInfo.Listeners[i]
@@ -410,10 +418,12 @@ func (lm *ListenerManager) removeListenerFromPort(port int32, configToRemove Lis
 		}
 	}
 	portInfo.Listeners = filtered
+	portInfo.mu.Unlock()
 }
 
 // addListenerToPort adds a listener config to a port
 func (lm *ListenerManager) addListenerToPort(port int32, config ListenerConfig, enableTLS bool, tlsCertFile, tlsKeyFile string) {
+	lm.portMu.Lock()
 	portInfo, exists := lm.portListeners[port]
 	if !exists {
 		// Create new port listener
@@ -435,6 +445,7 @@ func (lm *ListenerManager) addListenerToPort(port int32, config ListenerConfig, 
 		// Create context for this port's server
 		listenerCtx, cancel := context.WithCancel(lm.ctx)
 		portInfo.ShutdownFunc = cancel
+		lm.portMu.Unlock()
 
 		// Start the server
 		go func(p int32, srv *http.Server, ctx context.Context, tls bool, cert, key string) {
@@ -464,21 +475,24 @@ func (lm *ListenerManager) addListenerToPort(port int32, config ListenerConfig, 
 			}
 		}(port, server, cancel)
 	} else {
+		lm.portMu.Unlock()
 		// Add listener to existing port
+		portInfo.mu.Lock()
 		portInfo.Listeners = append(portInfo.Listeners, config)
+		portInfo.mu.Unlock()
 		klog.V(4).Infof("Added listener %s/%s to existing port %d", config.GatewayKey, config.ListenerName, port)
 	}
 }
 
 // StartListenersForGateway starts listeners for a Gateway, only processing delta changes
 func (lm *ListenerManager) StartListenersForGateway(gateway *gatewayv1.Gateway) {
-	lm.mu.Lock()
-	defer lm.mu.Unlock()
-
 	gatewayKey := fmt.Sprintf("%s/%s", gateway.Namespace, gateway.Name)
 
-	// Get old and new listener configs
+	// Get old listener configs
+	lm.gatewayMu.RLock()
 	oldConfigs := lm.gatewayListeners[gatewayKey]
+	lm.gatewayMu.RUnlock()
+
 	newConfigs := buildListenerConfigsFromGateway(gateway)
 
 	// Build maps for efficient comparison
@@ -520,46 +534,36 @@ func (lm *ListenerManager) StartListenersForGateway(gateway *gatewayv1.Gateway) 
 	}
 
 	// Update gateway listeners map
+	lm.gatewayMu.Lock()
 	lm.gatewayListeners[gatewayKey] = newConfigs
+	lm.gatewayMu.Unlock()
 }
 
 // StopListenersForGateway stops all listeners for a Gateway
-func (lm *ListenerManager) StopListenersForGateway(gatewayKey string) {
-	lm.mu.Lock()
-	defer lm.mu.Unlock()
-	lm.removeListenersForGatewayLocked(gatewayKey)
-}
-
-// checkAndClosePortIfEmpty checks if a port has no listeners and closes it if empty
-func (lm *ListenerManager) checkAndClosePortIfEmpty(port int32) {
-	portInfo, exists := lm.portListeners[port]
-	if !exists {
-		return
-	}
-
-	if len(portInfo.Listeners) == 0 {
-		// No listeners left on this port, close the server
-		klog.Infof("No listeners remaining on port %d, shutting down server", port)
-		if portInfo.ShutdownFunc != nil {
-			portInfo.ShutdownFunc()
-		}
-		delete(lm.portListeners, port)
-	}
-}
-
-// removeListenersForGatewayLocked removes listeners for a gateway
 // Only closes the port server if no listeners remain on that port
-func (lm *ListenerManager) removeListenersForGatewayLocked(gatewayKey string) {
+func (lm *ListenerManager) StopListenersForGateway(gatewayKey string) {
+	lm.gatewayMu.Lock()
 	_, exists := lm.gatewayListeners[gatewayKey]
 	if !exists {
+		lm.gatewayMu.Unlock()
 		return
 	}
+	delete(lm.gatewayListeners, gatewayKey)
+	lm.gatewayMu.Unlock()
 
 	// Build map of ports that might need checking
 	portsToCheck := make(map[int32]bool)
 
 	// Remove listeners for this gateway from all ports
+	lm.portMu.RLock()
+	portInfos := make(map[int32]*PortListenerInfo)
 	for port, portInfo := range lm.portListeners {
+		portInfos[port] = portInfo
+	}
+	lm.portMu.RUnlock()
+
+	for port, portInfo := range portInfos {
+		portInfo.mu.Lock()
 		originalCount := len(portInfo.Listeners)
 		// Filter out listeners belonging to this gateway
 		filtered := portInfo.Listeners[:0]
@@ -569,9 +573,11 @@ func (lm *ListenerManager) removeListenersForGatewayLocked(gatewayKey string) {
 			}
 		}
 		portInfo.Listeners = filtered
+		newCount := len(portInfo.Listeners)
+		portInfo.mu.Unlock()
 
 		// If listeners were removed, mark port for checking
-		if len(portInfo.Listeners) < originalCount {
+		if newCount < originalCount {
 			portsToCheck[port] = true
 		}
 	}
@@ -580,9 +586,46 @@ func (lm *ListenerManager) removeListenersForGatewayLocked(gatewayKey string) {
 	for port := range portsToCheck {
 		lm.checkAndClosePortIfEmpty(port)
 	}
+}
 
-	// Remove from gateway listeners map
-	delete(lm.gatewayListeners, gatewayKey)
+// checkAndClosePortIfEmpty checks if a port has no listeners and closes it if empty
+func (lm *ListenerManager) checkAndClosePortIfEmpty(port int32) {
+	lm.portMu.RLock()
+	portInfo, exists := lm.portListeners[port]
+	lm.portMu.RUnlock()
+	if !exists {
+		return
+	}
+
+	portInfo.mu.RLock()
+	isEmpty := len(portInfo.Listeners) == 0
+	portInfo.mu.RUnlock()
+
+	if isEmpty {
+		// No listeners left on this port, close the server
+		lm.portMu.Lock()
+		// Double-check after acquiring write lock
+		portInfo, exists := lm.portListeners[port]
+		if !exists {
+			lm.portMu.Unlock()
+			return
+		}
+		portInfo.mu.RLock()
+		isEmpty = len(portInfo.Listeners) == 0
+		portInfo.mu.RUnlock()
+		if isEmpty {
+			delete(lm.portListeners, port)
+			shutdownFunc := portInfo.ShutdownFunc
+			lm.portMu.Unlock()
+
+			klog.Infof("No listeners remaining on port %d, shutting down server", port)
+			if shutdownFunc != nil {
+				shutdownFunc()
+			}
+		} else {
+			lm.portMu.Unlock()
+		}
+	}
 }
 
 func AccessLogMiddleware(gwRouter *router.Router) gin.HandlerFunc {

@@ -118,6 +118,7 @@ const (
 type EventData struct {
 	EventType EventType
 	Pod       types.NamespacedName
+	Gateway   types.NamespacedName
 
 	ModelName  string
 	ModelRoute *aiv1alpha1.ModelRoute
@@ -142,7 +143,7 @@ type Store interface {
 	DeletePod(podName types.NamespacedName) error
 
 	// New methods for routing functionality
-	MatchModelServer(modelName string, request *http.Request, gatewayKey ...string) (types.NamespacedName, bool, *aiv1alpha1.ModelRoute, error)
+	MatchModelServer(modelName string, request *http.Request, gatewayKey string) (types.NamespacedName, bool, *aiv1alpha1.ModelRoute, error)
 
 	// Model routing methods
 	AddOrUpdateModelRoute(mr *aiv1alpha1.ModelRoute) error
@@ -176,16 +177,11 @@ type Store interface {
 	GetRequestWaitingQueueStats() []QueueStat
 
 	// Gateway methods (using standard Gateway API)
-	AddOrUpdateGateway(gateway interface{}) error
+	AddOrUpdateGateway(gateway *gatewayv1.Gateway) error
 	DeleteGateway(key string) error
-	GetGateway(key string) interface{}
-	GetGatewaysByNamespace(namespace string) []interface{}
-	GetAllGateways() []interface{}
-
-	// GatewayClass methods (using standard Gateway API)
-	AddOrUpdateGatewayClass(gatewayClass interface{}) error
-	DeleteGatewayClass(key string) error
-	GetGatewayClass(key string) interface{}
+	GetGateway(key string) *gatewayv1.Gateway
+	GetGatewaysByNamespace(namespace string) []*gatewayv1.Gateway
+	GetAllGateways() []*gatewayv1.Gateway
 
 	// Debug interface methods
 	GetAllModelRoutes() map[string]*aiv1alpha1.ModelRoute
@@ -615,7 +611,7 @@ func (s *store) DeleteModelRoute(namespacedName string) error {
 	return nil
 }
 
-func (s *store) MatchModelServer(model string, req *http.Request, gatewayKey ...string) (types.NamespacedName, bool, *aiv1alpha1.ModelRoute, error) {
+func (s *store) MatchModelServer(model string, req *http.Request, gatewayKey string) (types.NamespacedName, bool, *aiv1alpha1.ModelRoute, error) {
 	s.routeMutex.RLock()
 	defer s.routeMutex.RUnlock()
 
@@ -631,10 +627,10 @@ func (s *store) MatchModelServer(model string, req *http.Request, gatewayKey ...
 
 	// Check parentRefs if specified
 	if len(mr.Spec.ParentRefs) > 0 {
-		// If gatewayKey is provided, check if ModelRoute matches the specific gateway
-		if len(gatewayKey) > 0 && gatewayKey[0] != "" {
-			if !s.matchesSpecificGateway(mr, gatewayKey[0]) {
-				return types.NamespacedName{}, false, nil, fmt.Errorf("ModelRoute %s/%s does not match Gateway %s", mr.Namespace, mr.Name, gatewayKey[0])
+		// If gatewayKey is provided (not empty), check if ModelRoute matches the specific gateway
+		if gatewayKey != "" {
+			if !s.matchesSpecificGateway(mr, gatewayKey) {
+				return types.NamespacedName{}, false, nil, fmt.Errorf("ModelRoute %s/%s does not match Gateway %s", mr.Namespace, mr.Name, gatewayKey)
 			}
 		} else {
 			// No specific gateway specified, check if it matches any gateway
@@ -646,9 +642,9 @@ func (s *store) MatchModelServer(model string, req *http.Request, gatewayKey ...
 		// If ModelRoute has no parentRefs but gatewayKey is specified, it should not match
 		// (ModelRoute without parentRefs attaches to all Gateways in the same namespace)
 		// But if gatewayKey is specified, we should check namespace match
-		if len(gatewayKey) > 0 && gatewayKey[0] != "" {
+		if gatewayKey != "" {
 			// Extract namespace from gatewayKey (format: namespace/name)
-			parts := strings.Split(gatewayKey[0], "/")
+			parts := strings.Split(gatewayKey, "/")
 			if len(parts) == 2 && parts[0] != mr.Namespace {
 				return types.NamespacedName{}, false, nil, fmt.Errorf("ModelRoute %s/%s namespace does not match Gateway namespace %s", mr.Namespace, mr.Name, parts[0])
 			}
@@ -1163,16 +1159,11 @@ func (s *store) GetModelRoute(namespacedName string) *aiv1alpha1.ModelRoute {
 
 // Gateway methods (using standard Gateway API)
 
-func (s *store) AddOrUpdateGateway(gateway interface{}) error {
-	gw, ok := gateway.(*gatewayv1.Gateway)
-	if !ok {
-		return fmt.Errorf("invalid gateway type: %T", gateway)
-	}
-
-	key := fmt.Sprintf("%s/%s", gw.Namespace, gw.Name)
+func (s *store) AddOrUpdateGateway(gateway *gatewayv1.Gateway) error {
+	key := fmt.Sprintf("%s/%s", gateway.Namespace, gateway.Name)
 
 	s.gatewayMutex.Lock()
-	s.gateways[key] = gw
+	s.gateways[key] = gateway
 	s.gatewayMutex.Unlock()
 
 	klog.V(4).Infof("Added or updated Gateway: %s", key)
@@ -1180,7 +1171,7 @@ func (s *store) AddOrUpdateGateway(gateway interface{}) error {
 	// Trigger callback outside the lock to avoid potential deadlocks
 	s.triggerCallbacks("Gateway", EventData{
 		EventType: EventAdd,
-		Pod:       types.NamespacedName{Namespace: gw.Namespace, Name: gw.Name},
+		Gateway:   types.NamespacedName{Namespace: gateway.Namespace, Name: gateway.Name},
 	})
 
 	return nil
@@ -1204,25 +1195,25 @@ func (s *store) DeleteGateway(key string) error {
 	if namespace != "" && name != "" {
 		s.triggerCallbacks("Gateway", EventData{
 			EventType: EventDelete,
-			Pod:       types.NamespacedName{Namespace: namespace, Name: name},
+			Gateway:   types.NamespacedName{Namespace: namespace, Name: name},
 		})
 	}
 
 	return nil
 }
 
-func (s *store) GetGateway(key string) interface{} {
+func (s *store) GetGateway(key string) *gatewayv1.Gateway {
 	s.gatewayMutex.RLock()
 	defer s.gatewayMutex.RUnlock()
 
 	return s.gateways[key]
 }
 
-func (s *store) GetGatewaysByNamespace(namespace string) []interface{} {
+func (s *store) GetGatewaysByNamespace(namespace string) []*gatewayv1.Gateway {
 	s.gatewayMutex.RLock()
 	defer s.gatewayMutex.RUnlock()
 
-	var result []interface{}
+	var result []*gatewayv1.Gateway
 	for key, gateway := range s.gateways {
 		if strings.HasPrefix(key, namespace+"/") {
 			result = append(result, gateway)
@@ -1231,11 +1222,11 @@ func (s *store) GetGatewaysByNamespace(namespace string) []interface{} {
 	return result
 }
 
-func (s *store) GetAllGateways() []interface{} {
+func (s *store) GetAllGateways() []*gatewayv1.Gateway {
 	s.gatewayMutex.RLock()
 	defer s.gatewayMutex.RUnlock()
 
-	var result []interface{}
+	var result []*gatewayv1.Gateway
 	for _, gateway := range s.gateways {
 		result = append(result, gateway)
 	}
