@@ -188,9 +188,8 @@ type ListenerManager struct {
 	router           *router.Router
 	store            datastore.Store
 	server           *Server
-	portMu           sync.RWMutex
+	mu               sync.RWMutex
 	portListeners    map[int32]*PortListenerInfo // key: port
-	gatewayMu        sync.RWMutex
 	gatewayListeners map[string][]ListenerConfig // key: gatewayKey, tracks listeners per gateway
 }
 
@@ -208,13 +207,15 @@ func NewListenerManager(ctx context.Context, router *router.Router, store datast
 
 // findBestMatchingListener finds the best matching listener for a request
 // Returns the listener config and true if found, nil and false otherwise
+// NOTE: Caller must hold lm.mu lock
 func (lm *ListenerManager) findBestMatchingListener(port int32, hostname string) (*ListenerConfig, bool) {
-	lm.portMu.RLock()
+	lm.mu.RLock()
 	portInfo, exists := lm.portListeners[port]
-	lm.portMu.RUnlock()
 	if !exists {
+		lm.mu.RUnlock()
 		return nil, false
 	}
+	lm.mu.RUnlock()
 
 	portInfo.mu.RLock()
 	defer portInfo.mu.RUnlock()
@@ -322,7 +323,9 @@ func (lm *ListenerManager) createPortHandler(port int32) gin.HandlerFunc {
 			hostname = hostname[:idx]
 		}
 
+		lm.mu.RLock()
 		listenerConfig, found := lm.findBestMatchingListener(port, hostname)
+		lm.mu.RUnlock()
 		if !found {
 			c.JSON(http.StatusNotFound, gin.H{
 				"message": "No matching listener found",
@@ -401,10 +404,9 @@ func buildListenerConfigsFromGateway(gateway *gatewayv1.Gateway) []ListenerConfi
 }
 
 // removeListenerFromPort removes a specific listener config from a port
+// NOTE: Caller must hold lm.mu lock
 func (lm *ListenerManager) removeListenerFromPort(port int32, configToRemove ListenerConfig) {
-	lm.portMu.RLock()
 	portInfo, exists := lm.portListeners[port]
-	lm.portMu.RUnlock()
 	if !exists {
 		return
 	}
@@ -422,8 +424,8 @@ func (lm *ListenerManager) removeListenerFromPort(port int32, configToRemove Lis
 }
 
 // addListenerToPort adds a listener config to a port
+// NOTE: Caller must hold lm.mu lock
 func (lm *ListenerManager) addListenerToPort(port int32, config ListenerConfig, enableTLS bool, tlsCertFile, tlsKeyFile string) {
-	lm.portMu.Lock()
 	portInfo, exists := lm.portListeners[port]
 	if !exists {
 		// Create new port listener
@@ -445,7 +447,6 @@ func (lm *ListenerManager) addListenerToPort(port int32, config ListenerConfig, 
 		// Create context for this port's server
 		listenerCtx, cancel := context.WithCancel(lm.ctx)
 		portInfo.ShutdownFunc = cancel
-		lm.portMu.Unlock()
 
 		// Start the server
 		go func(p int32, srv *http.Server, ctx context.Context, tls bool, cert, key string) {
@@ -475,7 +476,6 @@ func (lm *ListenerManager) addListenerToPort(port int32, config ListenerConfig, 
 			}
 		}(port, server, cancel)
 	} else {
-		lm.portMu.Unlock()
 		// Add listener to existing port
 		portInfo.mu.Lock()
 		portInfo.Listeners = append(portInfo.Listeners, config)
@@ -486,12 +486,13 @@ func (lm *ListenerManager) addListenerToPort(port int32, config ListenerConfig, 
 
 // StartListenersForGateway starts listeners for a Gateway, only processing delta changes
 func (lm *ListenerManager) StartListenersForGateway(gateway *gatewayv1.Gateway) {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+
 	gatewayKey := fmt.Sprintf("%s/%s", gateway.Namespace, gateway.Name)
 
 	// Get old listener configs
-	lm.gatewayMu.RLock()
 	oldConfigs := lm.gatewayListeners[gatewayKey]
-	lm.gatewayMu.RUnlock()
 
 	newConfigs := buildListenerConfigsFromGateway(gateway)
 
@@ -534,33 +535,29 @@ func (lm *ListenerManager) StartListenersForGateway(gateway *gatewayv1.Gateway) 
 	}
 
 	// Update gateway listeners map
-	lm.gatewayMu.Lock()
 	lm.gatewayListeners[gatewayKey] = newConfigs
-	lm.gatewayMu.Unlock()
 }
 
 // StopListenersForGateway stops all listeners for a Gateway
 // Only closes the port server if no listeners remain on that port
 func (lm *ListenerManager) StopListenersForGateway(gatewayKey string) {
-	lm.gatewayMu.Lock()
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+
 	_, exists := lm.gatewayListeners[gatewayKey]
 	if !exists {
-		lm.gatewayMu.Unlock()
 		return
 	}
 	delete(lm.gatewayListeners, gatewayKey)
-	lm.gatewayMu.Unlock()
 
 	// Build map of ports that might need checking
 	portsToCheck := make(map[int32]bool)
 
 	// Remove listeners for this gateway from all ports
-	lm.portMu.RLock()
 	portInfos := make(map[int32]*PortListenerInfo)
 	for port, portInfo := range lm.portListeners {
 		portInfos[port] = portInfo
 	}
-	lm.portMu.RUnlock()
 
 	for port, portInfo := range portInfos {
 		portInfo.mu.Lock()
@@ -589,10 +586,9 @@ func (lm *ListenerManager) StopListenersForGateway(gatewayKey string) {
 }
 
 // checkAndClosePortIfEmpty checks if a port has no listeners and closes it if empty
+// NOTE: Caller must hold lm.mu lock
 func (lm *ListenerManager) checkAndClosePortIfEmpty(port int32) {
-	lm.portMu.RLock()
 	portInfo, exists := lm.portListeners[port]
-	lm.portMu.RUnlock()
 	if !exists {
 		return
 	}
@@ -603,11 +599,9 @@ func (lm *ListenerManager) checkAndClosePortIfEmpty(port int32) {
 
 	if isEmpty {
 		// No listeners left on this port, close the server
-		lm.portMu.Lock()
 		// Double-check after acquiring write lock
 		portInfo, exists := lm.portListeners[port]
 		if !exists {
-			lm.portMu.Unlock()
 			return
 		}
 		portInfo.mu.RLock()
@@ -616,14 +610,11 @@ func (lm *ListenerManager) checkAndClosePortIfEmpty(port int32) {
 		if isEmpty {
 			delete(lm.portListeners, port)
 			shutdownFunc := portInfo.ShutdownFunc
-			lm.portMu.Unlock()
 
 			klog.Infof("No listeners remaining on port %d, shutting down server", port)
 			if shutdownFunc != nil {
 				shutdownFunc()
 			}
-		} else {
-			lm.portMu.Unlock()
 		}
 	}
 }
