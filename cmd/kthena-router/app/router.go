@@ -594,28 +594,13 @@ func (lm *ListenerManager) checkAndClosePortIfEmpty(port int32) {
 	}
 
 	portInfo.mu.RLock()
-	isEmpty := len(portInfo.Listeners) == 0
-	portInfo.mu.RUnlock()
+	defer portInfo.mu.RUnlock()
 
-	if isEmpty {
+	if len(portInfo.Listeners) == 0 {
 		// No listeners left on this port, close the server
-		// Double-check after acquiring write lock
-		portInfo, exists := lm.portListeners[port]
-		if !exists {
-			return
-		}
-		portInfo.mu.RLock()
-		isEmpty = len(portInfo.Listeners) == 0
-		portInfo.mu.RUnlock()
-		if isEmpty {
-			delete(lm.portListeners, port)
-			shutdownFunc := portInfo.ShutdownFunc
-
-			klog.Infof("No listeners remaining on port %d, shutting down server", port)
-			if shutdownFunc != nil {
-				shutdownFunc()
-			}
-		}
+		delete(lm.portListeners, port)
+		klog.Infof("No listeners remaining on port %d, shutting down server", port)
+		portInfo.ShutdownFunc()
 	}
 }
 
