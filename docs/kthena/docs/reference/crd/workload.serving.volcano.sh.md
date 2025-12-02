@@ -547,7 +547,6 @@ _Appears in:_
 | `template` _[ServingGroup](#servinggroup)_ | Template defines the template for ServingGroup |  |  |
 | `rolloutStrategy` _[RolloutStrategy](#rolloutstrategy)_ | RolloutStrategy defines the strategy that will be applied to update replicas |  |  |
 | `recoveryPolicy` _[RecoveryPolicy](#recoverypolicy)_ | RecoveryPolicy defines the recovery policy for the failed Pod to be rebuilt | RoleRecreate | Enum: [ServingGroupRecreate RoleRecreate None] <br /> |
-| `topologySpreadConstraints` _[TopologySpreadConstraint](#topologyspreadconstraint) array_ |  |  |  |
 
 
 #### ModelServingStatus
@@ -810,23 +809,5 @@ _Appears in:_
 | `targetRef` _[ObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectreference-v1-core)_ | TargetRef references the target object to be monitored and scaled.<br />Default target GVK is ModelServing. Currently supported kinds: ModelServing. |  |  |
 | `subTargets` _[SubTarget](#subtarget)_ | SubTarget defines the sub-target object to be monitored and scaled.<br />Currently supported kinds: `Role` when TargetRef kind is ModelServing. |  |  |
 | `metricEndpoint` _[MetricEndpoint](#metricendpoint)_ | MetricEndpoint defines the configuration for scraping metrics from the target pods. |  |  |
-
-
-#### TopologySpreadConstraint
-
-
-
-TopologySpreadConstraint defines the topology spread constraint.
-
-
-
-_Appears in:_
-- [ModelServingSpec](#modelservingspec)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `maxSkew` _integer_ | MaxSkew describes the degree to which ServingGroup may be unevenly distributed. |  |  |
-| `topologyKey` _string_ | TopologyKey is the key of node labels. Nodes that have a label with this key<br />and identical values are considered to be in the same topology. |  |  |
-| `whenUnsatisfiable` _string_ | WhenUnsatisfiable indicates how to deal with an ServingGroup if it doesn't satisfy<br />the spread constraint. |  |  |
 
 

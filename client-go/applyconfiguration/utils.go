@@ -136,8 +136,6 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &applyconfigurationworkloadv1alpha1.SubTargetApplyConfiguration{}
 	case workloadv1alpha1.SchemeGroupVersion.WithKind("Target"):
 		return &applyconfigurationworkloadv1alpha1.TargetApplyConfiguration{}
-	case workloadv1alpha1.SchemeGroupVersion.WithKind("TopologySpreadConstraint"):
-		return &applyconfigurationworkloadv1alpha1.TopologySpreadConstraintApplyConfiguration{}
 
 	}
 	return nil
