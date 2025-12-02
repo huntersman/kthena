@@ -57,8 +57,7 @@ type ModelServingSpec struct {
 	// +kubebuilder:default=RoleRecreate
 	// +kubebuilder:validation:Enum={ServingGroupRecreate,RoleRecreate,None}
 	// +optional
-	RecoveryPolicy            RecoveryPolicy             `json:"recoveryPolicy,omitempty"`
-	TopologySpreadConstraints []TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+	RecoveryPolicy RecoveryPolicy `json:"recoveryPolicy,omitempty"`
 }
 
 type RecoveryPolicy string
@@ -126,23 +125,6 @@ type RollingUpdateConfiguration struct {
 	// The default value is 0.
 	// +optional
 	Partition *int32 `json:"partition,omitempty"`
-}
-
-// TopologySpreadConstraint defines the topology spread constraint.
-type TopologySpreadConstraint struct {
-	// MaxSkew describes the degree to which ServingGroup may be unevenly distributed.
-	MaxSkew int32 `json:"maxSkew,omitempty"`
-
-	// TopologyKey is the key of node labels. Nodes that have a label with this key
-	// and identical values are considered to be in the same topology.
-	TopologyKey string `json:"topologyKey,omitempty"`
-
-	// WhenUnsatisfiable indicates how to deal with an ServingGroup if it doesn't satisfy
-	// the spread constraint.
-	WhenUnsatisfiable string `json:"whenUnsatisfiable,omitempty"`
-
-	// LabelSelector is used to find matching ServingGroups.
-	LabelSelector *metav1.LabelSelector `json:"labelSelector,omitempty"`
 }
 
 type ModelServingConditionType string
