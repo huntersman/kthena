@@ -272,49 +272,15 @@ func (m *Manager) updatePodGroupIfNeeded(ctx context.Context, existing *scheduli
 	// Calculate current requirements
 	minMember, minTaskMember, minResources := m.calculateRequirements(mi, existing.GetName())
 
-	needsUpdate := false
 	updated := existing.DeepCopy()
+	updated.Spec.MinMember = int32(minMember)
+	updated.Spec.MinTaskMember = minTaskMember
+	updated.Spec.MinResources = &minResources
 
-	// Check if MinMember needs update
-	if updated.Spec.MinMember != int32(minMember) {
-		updated.Spec.MinMember = int32(minMember)
-		needsUpdate = true
-	}
+	// Apply network topology policy
+	updated = appendNetworkTopologyPolicy(mi, updated)
 
-	// Check if MinTaskMember needs update
-	if !equalMinTaskMember(updated.Spec.MinTaskMember, minTaskMember) {
-		updated.Spec.MinTaskMember = minTaskMember
-		needsUpdate = true
-	}
-
-	// Check if MinResources needs update
-	if !equalResourceList(updated.Spec.MinResources, &minResources) {
-		updated.Spec.MinResources = &minResources
-		needsUpdate = true
-	}
-
-	// Check if NetworkTopology needs update
-	// Handle the case where `mi.Spec.Template.NetworkTopology == nil` to avoid a null pointer panic.
-	if mi.Spec.Template.NetworkTopology == nil {
-		if updated.Spec.NetworkTopology != nil {
-			needsUpdate = true
-		}
-		if len(updated.Spec.SubGroupPolicy) > 0 {
-			needsUpdate = true
-		}
-	} else {
-		if !equalVolcanoNetworkTopology(updated.Spec.NetworkTopology, mi.Spec.Template.NetworkTopology.GroupPolicy) {
-			updated.Spec.NetworkTopology = mi.Spec.Template.NetworkTopology.GroupPolicy
-			needsUpdate = true
-		}
-
-		if !equalSubGroupNetworkTopology(updated.Spec.SubGroupPolicy, mi.Spec.Template.NetworkTopology.RolePolicy) {
-			updated = appendNetworkTopologyPolicy(mi, updated)
-			needsUpdate = true
-		}
-	}
-
-	if needsUpdate {
+	if hasPodGroupChanged(existing, updated) {
 		_, err := m.volcanoClient.SchedulingV1beta1().PodGroups(mi.Namespace).Update(ctx, updated, metav1.UpdateOptions{})
 		if err != nil {
 			return err
@@ -447,6 +413,46 @@ func equalVolcanoNetworkTopology(a, b *schedulingv1beta1.NetworkTopologySpec) bo
 	// Both are non-nil, compare their values
 	return a.Mode == b.Mode &&
 		a.HighestTierAllowed == b.HighestTierAllowed
+}
+
+func hasPodGroupChanged(current, updated *schedulingv1beta1.PodGroup) bool {
+	if current.Spec.MinMember != updated.Spec.MinMember {
+		return true
+	}
+	if !equalMinTaskMember(current.Spec.MinTaskMember, updated.Spec.MinTaskMember) {
+		return true
+	}
+	if !equalResourceList(current.Spec.MinResources, updated.Spec.MinResources) {
+		return true
+	}
+	if !equalVolcanoNetworkTopology(current.Spec.NetworkTopology, updated.Spec.NetworkTopology) {
+		return true
+	}
+	if hasSubGroupPolicyChanged(current.Spec.SubGroupPolicy, updated.Spec.SubGroupPolicy) {
+		return true
+	}
+	return false
+}
+
+func hasSubGroupPolicyChanged(a, b []schedulingv1beta1.SubGroupPolicySpec) bool {
+	if len(a) != len(b) {
+		return true
+	}
+	if len(a) == 0 {
+		return true
+	}
+	// Only need to compare the first element as only one SubGroupPolicy is set in our cased
+	ap, bp := a[0], b[0]
+	if len(ap.MatchPolicy) != len(bp.MatchPolicy) {
+		return true
+	}
+
+	for i := 0; i < len(ap.MatchPolicy); i++ {
+		if ap.MatchPolicy[i].LabelKey != bp.MatchPolicy[i].LabelKey {
+			return true
+		}
+	}
+	return !equalVolcanoNetworkTopology(ap.NetworkTopology, bp.NetworkTopology)
 }
 
 // neededHandlerPodGroupNameList returns the list of PodGroup names that need to be handled
