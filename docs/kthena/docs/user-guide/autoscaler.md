@@ -92,7 +92,7 @@ Configures autoscaling for a single instance type:
     - **name**: For `ModelServing`, use the serving name, e.g. `example-model-serving`
   - **subTarget**: Optional reference to a specific role within the `ModelServing` instance
     - **kind**: Optional. Must be `Role` when `targetRef.kind` is `ModelServing`
-    - **name**: Role name to target, e.g. `prefill` or `decode`
+    - **name**: The role name to target. Must be one of `ModelServing.spec.template.roles[].name`.
   - **metricEndpoint**: Optional endpoint configuration for custom metric collection
     - **uri**: Path to the metrics endpoint on the target pods (default: "/metrics")
     - **port**: Port number where metrics are exposed on the target pods (default: 8100)
