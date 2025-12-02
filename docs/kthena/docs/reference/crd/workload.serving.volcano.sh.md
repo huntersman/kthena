@@ -23,7 +23,8 @@
 
 
 
-AutoscalingPolicy is the Schema for the autoscalingpolicies API.
+AutoscalingPolicy defines the autoscaling policy configuration for model serving workloads.
+It specifies scaling rules, metrics, and behavior for automatic replica adjustment.
 
 
 
@@ -42,7 +43,7 @@ _Appears in:_
 
 
 
-AutoscalingPolicyBehavior defines the scaling behaviors for up and down actions.
+AutoscalingPolicyBehavior defines the scaling behavior configuration for both scale up and scale down operations.
 
 
 
@@ -51,17 +52,16 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `scaleUp` _[AutoscalingPolicyScaleUpPolicy](#autoscalingpolicyscaleuppolicy)_ | ScaleUp defines the policy for scaling up (increasing replicas). |  |  |
-| `scaleDown` _[AutoscalingPolicyStablePolicy](#autoscalingpolicystablepolicy)_ | ScaleDown defines the policy for scaling down (decreasing replicas). |  |  |
+| `scaleUp` _[AutoscalingPolicyScaleUpPolicy](#autoscalingpolicyscaleuppolicy)_ | ScaleUp defines the policy configuration for scaling up (increasing replicas). |  |  |
+| `scaleDown` _[AutoscalingPolicyStablePolicy](#autoscalingpolicystablepolicy)_ | ScaleDown defines the policy configuration for scaling down (decreasing replicas). |  |  |
 
 
 #### AutoscalingPolicyBinding
 
 
 
-AutoscalingPolicyBinding binds AutoscalingPolicy rules to specific ModelServing deployments,
-enabling either traditional metric-based scaling or multi-target optimization across
-heterogeneous hardware deployments.
+AutoscalingPolicyBinding binds AutoscalingPolicy rules to specific ModelServing deployments.
+It enables either traditional metric-based scaling or multi-target optimization across heterogeneous hardware deployments.
 
 
 
@@ -107,8 +107,8 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `policyRef` _[LocalObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#localobjectreference-v1-core)_ | PolicyRef references the AutoscalingPolicy that defines the scaling rules and metrics. |  |  |
-| `optimizerConfiguration` _[OptimizerConfiguration](#optimizerconfiguration)_ | OptimizerConfiguration enables multi-target optimization that dynamically allocates<br />replicas across heterogeneous ModelServing deployments based on overall compute requirements.<br />This is ideal for mixed hardware environments (e.g., H100/A100 clusters) where you want to<br />optimize resource utilization by adjusting deployment ratios between different hardware types<br />using mathematical optimization methods (e.g. integer programming). |  |  |
-| `scalingConfiguration` _[ScalingConfiguration](#scalingconfiguration)_ | ScalingConfiguration defines traditional autoscaling behavior that adjusts replica counts<br />based on monitoring metrics and target values for a single ModelServing deployment. |  |  |
+| `heterogeneousTarget` _[HeterogeneousTarget](#heterogeneoustarget)_ | HeterogeneousTarget enables optimization-based scaling across multiple ModelServing deployments with different hardware capabilities.<br />This approach dynamically adjusts replica distribution across heterogeneous resources (e.g., H100/A100 GPUs) based on overall computing requirements. |  |  |
+| `homogeneousTarget` _[HomogeneousTarget](#homogeneoustarget)_ | HomogeneousTarget enables traditional metric-based scaling for a single ModelServing deployment.<br />This approach adjusts replica count based on monitoring metrics and their target values. |  |  |
 
 
 #### AutoscalingPolicyBindingStatus
@@ -128,7 +128,7 @@ _Appears in:_
 
 
 
-AutoscalingPolicyList contains a list of AutoscalingPolicy.
+AutoscalingPolicyList contains a list of AutoscalingPolicy objects.
 
 
 
@@ -145,7 +145,7 @@ AutoscalingPolicyList contains a list of AutoscalingPolicy.
 
 
 
-AutoscalingPolicyMetric defines a metric and its target value for scaling.
+AutoscalingPolicyMetric defines a metric and its target value for scaling decisions.
 
 
 
@@ -154,15 +154,15 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `metricName` _string_ | MetricName is the name of the metric to monitor. |  |  |
-| `targetValue` _[Quantity](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#quantity-resource-api)_ | TargetValue is the target value for the metric to trigger scaling. |  |  |
+| `metricName` _string_ | MetricName defines the name of the metric to monitor for scaling decisions. |  |  |
+| `targetValue` _[Quantity](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#quantity-resource-api)_ | TargetValue defines the target value for the metric that triggers scaling operations. |  |  |
 
 
 #### AutoscalingPolicyPanicPolicy
 
 
 
-AutoscalingPolicyPanicPolicy defines the policy for panic scaling up.
+AutoscalingPolicyPanicPolicy defines the emergency scaling policy for handling sudden traffic surges.
 
 
 
@@ -171,15 +171,15 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `percent` _integer_ | Percent is the maximum percentage of instances to scale up. | 1000 | Maximum: 1000 <br />Minimum: 0 <br /> |
-| `panicThresholdPercent` _integer_ | PanicThresholdPercent is the threshold percent to enter panic mode. | 200 | Maximum: 1000 <br />Minimum: 110 <br /> |
+| `percent` _integer_ | Percent defines the maximum percentage of current instances to scale up during panic mode. | 1000 | Maximum: 1000 <br />Minimum: 0 <br /> |
+| `panicThresholdPercent` _integer_ | PanicThresholdPercent defines the metric threshold percentage that triggers panic mode.<br />When metrics exceed this percentage of target values, panic mode is activated. | 200 | Maximum: 1000 <br />Minimum: 110 <br /> |
 
 
 #### AutoscalingPolicyScaleUpPolicy
 
 
 
-
+AutoscalingPolicyScaleUpPolicy defines the scaling up policy configuration.
 
 
 
@@ -188,8 +188,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `stablePolicy` _[AutoscalingPolicyStablePolicy](#autoscalingpolicystablepolicy)_ | Stable policy usually makes decisions based on the average value of metrics calculated over the past few minutes and introduces a scaling-down cool-down period/delay.<br />This mechanism is relatively stable, as it can smooth out short-term small fluctuations and avoid overly frequent and unnecessary Pod scaling. |  |  |
-| `panicPolicy` _[AutoscalingPolicyPanicPolicy](#autoscalingpolicypanicpolicy)_ | When the load surges sharply within a short period (for example, encountering a sudden traffic peak or a rush of sudden computing tasks),<br />using the average value over a long time window to calculate the required number of replicas will cause significant lag.<br />If the system needs to scale out quickly to cope with such peaks, the ordinary scaling logic may fail to respond in time,<br />resulting in delayed Pod startup, slower service response time or timeouts, and may even lead to service paralysis or data backlogs (for workloads such as message queues). |  |  |
+| `stablePolicy` _[AutoscalingPolicyStablePolicy](#autoscalingpolicystablepolicy)_ | StablePolicy defines the stable scaling policy that uses average metric values over time windows.<br />This policy smooths out short-term fluctuations and avoids unnecessary frequent scaling operations. |  |  |
+| `panicPolicy` _[AutoscalingPolicyPanicPolicy](#autoscalingpolicypanicpolicy)_ | PanicPolicy defines the emergency scaling policy for handling sudden traffic spikes.<br />This policy activates during rapid load surges to prevent service degradation or timeouts. |  |  |
 
 
 #### AutoscalingPolicySpec
@@ -207,16 +207,16 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `tolerancePercent` _integer_ | TolerancePercent is the percentage of deviation tolerated before scaling actions are triggered.<br />The current number of instances is current_replicas, and the expected number of instances inferred from monitoring metrics is target_replicas.<br />The scaling operation will only be actually performed when \|current_replicas - target_replicas\| >= current_replicas * TolerancePercent. | 10 | Maximum: 100 <br />Minimum: 0 <br /> |
-| `metrics` _[AutoscalingPolicyMetric](#autoscalingpolicymetric) array_ | Metrics is the list of metrics used to evaluate scaling decisions. |  | MinItems: 1 <br /> |
-| `behavior` _[AutoscalingPolicyBehavior](#autoscalingpolicybehavior)_ | Behavior defines the scaling behavior for both scale up and scale down. |  |  |
+| `tolerancePercent` _integer_ | TolerancePercent defines the percentage of deviation tolerated before scaling actions are triggered.<br />current_replicas represents the current number of instances, while target_replicas represents the expected number of instances calculated from monitoring metrics.<br />Scaling operations are performed only when \|current_replicas - target_replicas\| >= current_replicas * TolerancePercent / 100. | 10 | Maximum: 100 <br />Minimum: 0 <br /> |
+| `metrics` _[AutoscalingPolicyMetric](#autoscalingpolicymetric) array_ | Metrics defines the list of metrics used to evaluate scaling decisions. |  | MinItems: 1 <br /> |
+| `behavior` _[AutoscalingPolicyBehavior](#autoscalingpolicybehavior)_ | Behavior defines the scaling behavior configuration for both scale up and scale down operations. |  |  |
 
 
 #### AutoscalingPolicyStablePolicy
 
 
 
-AutoscalingPolicyStablePolicy defines the policy for stable scaling up or scaling down.
+AutoscalingPolicyStablePolicy defines the stable scaling policy for both scale up and scale down operations.
 
 
 
@@ -226,9 +226,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `instances` _integer_ | Instances is the maximum number of instances to scale. | 1 | Minimum: 0 <br /> |
-| `percent` _integer_ | Percent is the maximum percentage of instances to scaling. | 100 | Maximum: 1000 <br />Minimum: 0 <br /> |
-| `selectPolicy` _[SelectPolicyType](#selectpolicytype)_ | SelectPolicy determines the selection strategy for scaling up (e.g., Or, And).<br />'Or' represents the scaling operation will be performed as long as either the Percent requirement or the Instances requirement is met.<br />'And' represents the scaling operation will be performed as long as both the Percent requirement and the Instances requirement is met. | Or | Enum: [Or And] <br /> |
+| `instances` _integer_ | Instances defines the maximum absolute number of instances to scale per period. | 1 | Minimum: 0 <br /> |
+| `percent` _integer_ | Percent defines the maximum percentage of current instances to scale per period. | 100 | Maximum: 1000 <br />Minimum: 0 <br /> |
+| `selectPolicy` _[SelectPolicyType](#selectpolicytype)_ | SelectPolicy determines the selection strategy for scaling operations.<br />'Or' means scaling is performed if either the Percent or Instances requirement is met.<br />'And' means scaling is performed only if both Percent and Instances requirements are met. | Or | Enum: [Or And] <br /> |
 
 
 #### AutoscalingPolicyStatus
@@ -260,6 +260,60 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `minRoleReplicas` _object (keys:string, values:integer)_ | MinRoleReplicas defines the minimum number of replicas required for each role<br />in gang scheduling. This map allows users to specify different<br />minimum replica requirements for different roles.<br />Notice: In practice, when determining the minTaskMember for a podGroup, it takes the minimum value between `MinRoleReplicas[role.Name]` and role.Replicas.<br />If you set:<br />gangPolicy:<br />  minRoleReplicas:<br />    Prefill: 2<br />    Decode: 2<br />And set the roles as:<br />roles:<br />  - name: P<br />    replicas: 1<br />    workerReplicas: 2<br />  - name: D<br />    replicas: 3<br />    workerReplicas: 1<br />The resulting podGroup will have minTaskMember:<br />minTaskMember:<br />  P-0: 3 (1 entry pod + 2 worker pods)<br />  D-0: 4 (1 entry pod + 3 worker pods)<br />  D-1: 4 (1 entry pod + 3 worker pods)<br />The replicase of P is min(minRoleReplicas['P'], role.Replicas) = min(2, 1) = 1<br />The replicase of D is min(minRoleReplicas['D'], role.Replicas) = min(2, 3) = 2<br />Key: role name<br />Value: minimum number of replicas required for that role |  |  |
+
+
+#### HeterogeneousTarget
+
+
+
+HeterogeneousTarget defines the configuration for optimization-based autoscaling across multiple deployments.
+
+
+
+_Appears in:_
+- [AutoscalingPolicyBindingSpec](#autoscalingpolicybindingspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `params` _[HeterogeneousTargetParam](#heterogeneoustargetparam) array_ | Params defines the configuration parameters for multiple ModelServing groups to be optimized. |  | MinItems: 1 <br /> |
+| `costExpansionRatePercent` _integer_ | CostExpansionRatePercent defines the percentage rate at which the cost expands during optimization calculations. | 200 | Minimum: 0 <br /> |
+
+
+#### HeterogeneousTargetParam
+
+
+
+HeterogeneousTargetParam defines the configuration parameters for a specific deployment type in heterogeneous scaling.
+
+
+
+_Appears in:_
+- [HeterogeneousTarget](#heterogeneoustarget)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `target` _[Target](#target)_ | Target defines the scaling instance configuration for this deployment type. |  |  |
+| `cost` _integer_ | Cost defines the relative cost factor used in optimization calculations.<br />This factor balances performance requirements against deployment costs. |  | Minimum: 0 <br /> |
+| `minReplicas` _integer_ | MinReplicas defines the minimum number of replicas to maintain for this deployment type. |  | Maximum: 1e+06 <br />Minimum: 0 <br /> |
+| `maxReplicas` _integer_ | MaxReplicas defines the maximum number of replicas allowed for this deployment type. |  | Maximum: 1e+06 <br />Minimum: 1 <br /> |
+
+
+#### HomogeneousTarget
+
+
+
+HomogeneousTarget defines the configuration for traditional metric-based autoscaling of a single deployment.
+
+
+
+_Appears in:_
+- [AutoscalingPolicyBindingSpec](#autoscalingpolicybindingspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `target` _[Target](#target)_ | Target defines the object to be monitored and scaled. |  |  |
+| `minReplicas` _integer_ | MinReplicas defines the minimum number of replicas to maintain. |  | Maximum: 1e+06 <br />Minimum: 0 <br /> |
+| `maxReplicas` _integer_ | MaxReplicas defines the maximum number of replicas allowed. |  | Maximum: 1e+06 <br />Minimum: 1 <br /> |
 
 
 #### LoraAdapter
@@ -309,8 +363,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `uri` _string_ | URI is the path where metrics are exposed (e.g., "/metrics"). | /metrics |  |
-| `port` _integer_ | Port is the network port where metrics are exposed by the pods. | 8100 |  |
+| `uri` _string_ | Uri defines the HTTP path where metrics are exposed (e.g., "/metrics"). | /metrics |  |
+| `port` _integer_ | Port defines the network port where metrics are exposed by the pods. | 8100 |  |
 
 
 #### ModelBackend
@@ -578,43 +632,6 @@ _Appears in:_
 | `coordinator` | ModelWorkerTypeCoordinator represents a coordinator worker.<br /> |
 
 
-#### OptimizerConfiguration
-
-
-
-OptimizerConfiguration defines parameters for multi-target optimization across
-multiple ModelServing deployments with different hardware characteristics.
-
-
-
-_Appears in:_
-- [AutoscalingPolicyBindingSpec](#autoscalingpolicybindingspec)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `params` _[OptimizerParam](#optimizerparam) array_ | Params contains the optimization parameters for each ModelServing group.<br />Each entry defines a different deployment type (e.g., different hardware) to optimize. |  | MinItems: 1 <br /> |
-| `costExpansionRatePercent` _integer_ | CostExpansionRatePercent defines the acceptable cost expansion percentage<br />when optimizing across multiple deployment types. A higher value allows more<br />flexibility in resource allocation but may increase overall costs. | 200 | Minimum: 0 <br /> |
-
-
-#### OptimizerParam
-
-
-
-OptimizerParam defines optimization parameters for a specific ModelServing deployment type.
-
-
-
-_Appears in:_
-- [OptimizerConfiguration](#optimizerconfiguration)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `target` _[Target](#target)_ | Target specifies the ModelServing deployment and its monitoring configuration. |  |  |
-| `cost` _integer_ | Cost represents the relative cost factor for this deployment type.<br />Used in optimization calculations to balance performance vs. cost. |  | Minimum: 0 <br /> |
-| `minReplicas` _integer_ | MinReplicas is the minimum number of replicas to maintain for this deployment type. |  | Maximum: 1e+06 <br />Minimum: 0 <br /> |
-| `maxReplicas` _integer_ | MaxReplicas is the maximum number of replicas allowed for this deployment type. |  | Maximum: 1e+06 <br />Minimum: 1 <br /> |
-
-
 #### PodTemplateSpec
 
 
@@ -722,29 +739,11 @@ _Appears in:_
 | `ServingGroupRollingUpdate` | ServingGroupRollingUpdate indicates that ServingGroup replicas will be updated one by one.<br /> |
 
 
-#### ScalingConfiguration
-
-
-
-ScalingConfiguration defines the scaling parameters for a single target deployment.
-
-
-
-_Appears in:_
-- [AutoscalingPolicyBindingSpec](#autoscalingpolicybindingspec)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `target` _[Target](#target)_ | Target specifies the ModelServing deployment to monitor and scale. |  |  |
-| `minReplicas` _integer_ | MinReplicas is the minimum number of replicas to maintain. |  | Maximum: 1e+06 <br />Minimum: 0 <br /> |
-| `maxReplicas` _integer_ | MaxReplicas is the maximum number of replicas allowed. |  | Maximum: 1e+06 <br />Minimum: 1 <br /> |
-
-
 #### SelectPolicyType
 
 _Underlying type:_ _string_
 
-SelectPolicyType defines the type of select olicy.
+SelectPolicyType defines the selection strategy type for scaling operations.
 
 _Validation:_
 - Enum: [Or And]
@@ -777,6 +776,23 @@ _Appears in:_
 | `roles` _[Role](#role) array_ |  |  | MaxItems: 4 <br />MinItems: 1 <br /> |
 
 
+#### SubTarget
+
+
+
+
+
+
+
+_Appears in:_
+- [Target](#target)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `kind` _string_ |  |  |  |
+| `name` _string_ |  |  |  |
+
+
 #### Target
 
 
@@ -786,14 +802,14 @@ Target defines a ModelServing deployment that can be monitored and scaled.
 
 
 _Appears in:_
-- [OptimizerParam](#optimizerparam)
-- [ScalingConfiguration](#scalingconfiguration)
+- [HeterogeneousTargetParam](#heterogeneoustargetparam)
+- [HomogeneousTarget](#homogeneoustarget)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `targetRef` _[ObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectreference-v1-core)_ | TargetRef references the ModelServing object to monitor and scale. |  |  |
-| `additionalMatchLabels` _object (keys:string, values:string)_ | AdditionalMatchLabels provides additional label selectors to refine<br />which pods within the ModelServing deployment should be monitored. |  |  |
-| `metricEndpoint` _[MetricEndpoint](#metricendpoint)_ | MetricEndpoint configures how to scrape metrics from the target pods.<br />If not specified, defaults to port 8100 and path "/metrics". |  |  |
+| `targetRef` _[ObjectReference](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectreference-v1-core)_ | TargetRef references the target object to be monitored and scaled.<br />Default target GVK is ModelServing. Currently supported kinds: ModelServing. |  |  |
+| `subTargets` _[SubTarget](#subtarget)_ | SubTarget defines the sub-target object to be monitored and scaled.<br />Currently supported kinds: `Role` when TargetRef kind is ModelServing. |  |  |
+| `metricEndpoint` _[MetricEndpoint](#metricendpoint)_ | MetricEndpoint defines the configuration for scraping metrics from the target pods. |  |  |
 
 
 #### TopologySpreadConstraint
