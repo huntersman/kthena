@@ -107,6 +107,8 @@ func GetTargetLabels(target *workload.Target) (*labels.Selector, error) {
 		if target.SubTarget != nil && target.SubTarget.Kind == ModelServingRoleKind {
 			selector.MatchLabels[workload.RoleLabelKey] = target.SubTarget.Name
 		}
+	} else {
+		return nil, fmt.Errorf("unsupported target ref kind: %s", target.TargetRef.Kind)
 	}
 
 	labelSelector, err := metav1.LabelSelectorAsSelector(&selector)
@@ -114,6 +116,5 @@ func GetTargetLabels(target *workload.Target) (*labels.Selector, error) {
 		return nil, err
 	}
 
-	klog.Warningf("invalid target ref kind, kind: %s", target.TargetRef.Kind)
 	return &labelSelector, nil
 }

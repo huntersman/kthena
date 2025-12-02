@@ -176,7 +176,9 @@ func TestValidateBindingTargetKind_HeterogeneousValidRole(t *testing.T) {
 				Params: []v1alpha1.HeterogeneousTargetParam{
 					{
 						Target: v1alpha1.Target{
-							TargetRef: corev1.ObjectReference{Kind: v1alpha1.ModelServingKind.Kind + ModelServingRoleKindSuffix},
+							TargetRef: corev1.ObjectReference{
+								Kind: v1alpha1.ModelServingKind.Kind,
+								Name: "target-name"},
 						},
 						MinReplicas: 0,
 						MaxReplicas: 1,
@@ -225,7 +227,9 @@ func TestValidateBindingTargetKind_HomogeneousValidModelServing(t *testing.T) {
 		Spec: v1alpha1.AutoscalingPolicyBindingSpec{
 			HomogeneousTarget: &v1alpha1.HomogeneousTarget{
 				Target: v1alpha1.Target{
-					TargetRef: corev1.ObjectReference{Kind: v1alpha1.ModelServingKind.Kind},
+					TargetRef: corev1.ObjectReference{
+						Name: "target-name",
+						Kind: v1alpha1.ModelServingKind.Kind},
 				},
 				MinReplicas: 0,
 				MaxReplicas: 1,

@@ -88,8 +88,11 @@ Configures autoscaling for a single instance type:
 
 - **target**:
   - **targetRef**: References the target serving instance
-    - **kind**: Supported values: `ModelServing` or `ModelServing/Role`
-    - **name**: For `ModelServing`, use the serving name; for `ModelServing/Role`, use `servingName/roleName` format, e.g. `example-model-serving/prefill`
+    - **kind**: Only supported value is `ModelServing`
+    - **name**: For `ModelServing`, use the serving name, e.g. `example-model-serving`
+  - **subTarget**: Optional reference to a specific role within the `ModelServing` instance
+    - **kind**: Optional. Must be `Role` when `targetRef.kind` is `ModelServing`
+    - **name**: The role name to target. Must be one of `ModelServing.spec.template.roles[].name`.
   - **metricEndpoint**: Optional endpoint configuration for custom metric collection
     - **uri**: Path to the metrics endpoint on the target pods (default: "/metrics")
     - **port**: Port number where metrics are exposed on the target pods (default: 8100)
@@ -115,8 +118,8 @@ Configures autoscaling across multiple instance types with cost optimization:
 - **params**: Array of configuration parameters for each instance type (at least 1 required):
   - **target**:
     - **targetRef**: References the specific instance type
-      - **kind**: Supported values: `ModelServing` or `ModelServing/Role`
-      - **name**: For `ModelServing`, use the serving name; for `ModelServing/Role`, use `servingName/roleName` format, e.g. `example-model-serving/gpu`
+      - **kind**: Only supported value is `ModelServing`
+      - **name**: For `ModelServing`, use the serving name, e.g. `example-model-serving`
     - **metricEndpoint**: Optional endpoint configuration for custom metric collection
       - **uri**: Path to the metrics endpoint on the target pods (default: "/metrics")
       - **port**: Port number where metrics are exposed on the target pods (default: 8100)
@@ -180,15 +183,6 @@ spec:
     maxReplicas: 10
 ```
 
-**Key Behavior Characteristics:**
-- **Metric Target**: Maintains no more than 10 waiting requests per instance
-- **Scaling Range**: Operates between 2-10 replicas
-- **Tolerance**: 10% buffer prevents frequent scaling for minor fluctuations
-- **Panic Mode**: Triggers accelerated scaling when load exceeds 150% of target, remaining active for 5 minutes
-- **Stable Scaling**: 1-minute observation window with 30-second evaluation intervals
-- **Conservative Scale-down**: 5-minute stabilization window ensures load reduction is sustained
-- **Custom Metrics**: Collects from `/custom-metrics` on port 9090 instead of defaults
-
 #### Role-Level Target Example
 
 This example demonstrates binding directly to a specific role within a `ModelServing` (role-level scaling):
@@ -214,9 +208,8 @@ spec:
 ```
 
 **Behavior Details:**
-- When the target is `ModelServing`, the controller updates the target object's `spec.replicas`
-- When `subTargets.kind` is `Role`, the controller updates `replicas` for the entry in `spec.template.roles[]` whose `name` matches the role
-- If the current replica count already matches the recommended value, the controller skips the update to avoid unnecessary API calls
+- When the target is `ModelServing` and `subTargets.kind` is not specified, the controller updates the target object's `spec.replicas`
+- When the target kind is `ModelServing` and `subTargets.kind` is `Role`, the controller updates `replicas` for the entry in `spec.template.roles[]` whose `subTarget.name` matches the role's name
 
 For role-level scaling, check the role replica within the `ModelServing`:
 
@@ -275,15 +268,6 @@ spec:
       maxReplicas: 8
       cost: 30
 ```
-
-**Optimization Strategy:**
-- **Cost Control**: 20% maximum cost expansion allows flexible instance selection
-- **Instance Types**: Manages high-performance GPU (cost: 100) and cost-effective CPU (cost: 30) instances
-- **GPU Boundaries**: 1-5 replicas for high-performance workloads
-- **CPU Boundaries**: 2-8 replicas for general workloads
-- **Scaling Priority**: Preferentially scales cheaper CPU instances first
-- **Cost Optimization**: During scale-down, reduces expensive GPU instances first
-- **Performance Assurance**: Maintains minimum GPU instances for baseline high-performance capability
 
 ## Monitoring and Verification
 
@@ -365,7 +349,7 @@ The Kthena Autoscaler provides powerful, flexible autoscaling capabilities for y
 - **Dual Modes**: Choose between homogeneous scaling (single instance type) or heterogeneous optimization (multiple instance types)
 - **Precise Control**: Fine-tune scaling behavior with panic thresholds, stabilization windows, and tolerance ranges
 - **Cost Optimization**: Automatically balance performance and cost across different instance types
-- **Role-Level Scaling**: Target specific roles within `ModelServing` resources for granular control
+- **Role-Level Scaling**: Sub target specific roles within `ModelServing` resources for granular control
 - **Custom Metrics**: Configure custom metric endpoints for specialized monitoring needs
 
 For more advanced configurations and use cases, refer to the [Kthena CLI reference](../reference/cli/kthena.md) and [CRD documentation](../reference/crd/workload.serving.volcano.sh.md).
