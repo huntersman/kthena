@@ -36,7 +36,6 @@ This change will disrupt the existing logic that processes changes to `ServingGr
 - Handling Binpack Scaling for the servingGroup.
 - Handling Binpack Scaling for the Role.
 - How should PodGroup's update logic adapt to binpacking?
-- Explain the current limitations of MinTaskMember in PodGroup during role-level scaling.
 
 ### Motivation
 
@@ -213,30 +212,6 @@ if len(roleList) > expectReplicas {
 ```
 
 After each pod deletion completes, a `reconcile` will occurs. Therefore, once all pods requiring deletion within the cluster have been removed, the `len(roleList)` will match the `expectedReplicas`. Then update the MinTaskMember for the corresponding PodGroup. The logic for obtaining the RoleName is consistent with the previous logic for obtaining the ServingGroupName.
-
-#### The Limitations of PodGroup MinTaskMember
-
-Although we updated the `MinTaskMember` of the podGroup in the above explanation, the current MinTaskMember has certain limitations. For example, in the 1P1D scenario, the MinTaskMember of the podGroup is:
-
-```yaml
-minTaskMember
-  perfill-0: 1
-  decode-0: 1
-```
-
-When scale up to 2P2D, The `MinTaskMember` of the podGroup will updated:
-
-```yaml
-minTaskMember
-  perfill-0: 1
-  decode-0: 1
-  perfill-1: 1
-  decode-2: 1
-```
-
-But, the pods of `prefill-1` and `decode-1` created by modelServing will `Panding`. Because `PodGroup` does not track pods already running in the cluster. Under the updated `PodGroup`, all four instances of the pod must be deployed simultaneously for gang scheduling. Currently, only two instances have been requested for creation. Therefore, the pod remains in a pending state.
-
-This issue can be resolved by adding a [subGroupPolicy](https://github.com/volcano-sh/apis/pull/195) to the volcano PodGroup.
 
 #### Test Plan
 
