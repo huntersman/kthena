@@ -232,25 +232,6 @@ func (m *MockStore) GetAllGateways() []*gatewayv1.Gateway {
 	return args.Get(0).([]*gatewayv1.Gateway)
 }
 
-// GatewayClass methods (using standard Gateway API)
-func (m *MockStore) AddOrUpdateGatewayClass(gatewayClass interface{}) error {
-	args := m.Called(gatewayClass)
-	return args.Error(0)
-}
-
-func (m *MockStore) DeleteGatewayClass(key string) error {
-	args := m.Called(key)
-	return args.Error(0)
-}
-
-func (m *MockStore) GetGatewayClass(key string) interface{} {
-	args := m.Called(key)
-	if args.Get(0) == nil {
-		return nil
-	}
-	return args.Get(0)
-}
-
 func TestListModelRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

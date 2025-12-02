@@ -234,16 +234,12 @@ type store struct {
 	routeMutex sync.RWMutex
 	// Model routing fields
 	routeInfo  map[string]*modelRouteInfo
-	routes     map[string]*aiv1alpha1.ModelRoute
-	loraRoutes map[string]*aiv1alpha1.ModelRoute
+	routes     map[string][]*aiv1alpha1.ModelRoute // key: model name, value: list of ModelRoutes
+	loraRoutes map[string][]*aiv1alpha1.ModelRoute // key: lora name, value: list of ModelRoutes
 
 	// Gateway fields (using standard Gateway API)
 	gatewayMutex sync.RWMutex
 	gateways     map[string]*gatewayv1.Gateway // key: namespace/name, value: *gatewayv1.Gateway
-
-	// GatewayClass fields (using standard Gateway API)
-	gatewayClassMutex sync.RWMutex
-	gatewayClasses    map[string]*gatewayv1.GatewayClass // key: name (cluster-scoped), value: *gatewayv1.GatewayClass
 
 	// New fields for callback management
 	callbacks map[string][]CallbackFunc
@@ -260,10 +256,9 @@ func New() Store {
 		modelServer:         sync.Map{},
 		pods:                sync.Map{},
 		routeInfo:           make(map[string]*modelRouteInfo),
-		routes:              make(map[string]*aiv1alpha1.ModelRoute),
-		loraRoutes:          make(map[string]*aiv1alpha1.ModelRoute),
+		routes:              make(map[string][]*aiv1alpha1.ModelRoute),
+		loraRoutes:          make(map[string][]*aiv1alpha1.ModelRoute),
 		gateways:            make(map[string]*gatewayv1.Gateway),
-		gatewayClasses:      make(map[string]*gatewayv1.GatewayClass),
 		callbacks:           make(map[string][]CallbackFunc),
 		initialSynced:       &atomic.Bool{},
 		requestWaitingQueue: sync.Map{},
@@ -563,11 +558,37 @@ func (s *store) AddOrUpdateModelRoute(mr *aiv1alpha1.ModelRoute) error {
 	}
 
 	if mr.Spec.ModelName != "" {
-		s.routes[mr.Spec.ModelName] = mr
+		// Check if this ModelRoute already exists in the slice
+		routes := s.routes[mr.Spec.ModelName]
+		found := false
+		for i, route := range routes {
+			if route.Namespace == mr.Namespace && route.Name == mr.Name {
+				routes[i] = mr                       // Update existing
+				s.routes[mr.Spec.ModelName] = routes // Update the map
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.routes[mr.Spec.ModelName] = append(routes, mr)
+		}
 	}
 
 	for _, lora := range mr.Spec.LoraAdapters {
-		s.loraRoutes[lora] = mr
+		// Check if this ModelRoute already exists in the slice
+		loraRoutes := s.loraRoutes[lora]
+		found := false
+		for i, route := range loraRoutes {
+			if route.Namespace == mr.Namespace && route.Name == mr.Name {
+				loraRoutes[i] = mr              // Update existing
+				s.loraRoutes[lora] = loraRoutes // Update the map
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.loraRoutes[lora] = append(loraRoutes, mr)
+		}
 	}
 	s.routeMutex.Unlock()
 
@@ -585,9 +606,37 @@ func (s *store) DeleteModelRoute(namespacedName string) error {
 	var modelName string
 	if info != nil {
 		modelName = info.model
-		delete(s.routes, info.model)
+		// Remove from routes map
+		if modelName != "" {
+			routes := s.routes[modelName]
+			newRoutes := make([]*aiv1alpha1.ModelRoute, 0, len(routes))
+			for _, route := range routes {
+				routeKey := route.Namespace + "/" + route.Name
+				if routeKey != namespacedName {
+					newRoutes = append(newRoutes, route)
+				}
+			}
+			if len(newRoutes) == 0 {
+				delete(s.routes, modelName)
+			} else {
+				s.routes[modelName] = newRoutes
+			}
+		}
+		// Remove from loraRoutes map
 		for _, lora := range info.loras {
-			delete(s.loraRoutes, lora)
+			loraRoutes := s.loraRoutes[lora]
+			newLoraRoutes := make([]*aiv1alpha1.ModelRoute, 0, len(loraRoutes))
+			for _, route := range loraRoutes {
+				routeKey := route.Namespace + "/" + route.Name
+				if routeKey != namespacedName {
+					newLoraRoutes = append(newLoraRoutes, route)
+				}
+			}
+			if len(newLoraRoutes) == 0 {
+				delete(s.loraRoutes, lora)
+			} else {
+				s.loraRoutes[lora] = newLoraRoutes
+			}
 		}
 	}
 	delete(s.routeInfo, namespacedName)
@@ -616,87 +665,63 @@ func (s *store) MatchModelServer(model string, req *http.Request, gatewayKey str
 	defer s.routeMutex.RUnlock()
 
 	var isLora bool
-	mr, ok := s.routes[model]
-	if !ok {
-		mr, ok = s.loraRoutes[model]
+	var candidateRoutes []*aiv1alpha1.ModelRoute
+
+	// Try to find routes by model name first
+	routes, ok := s.routes[model]
+	if ok {
+		candidateRoutes = routes
+		isLora = false
+	} else {
+		// Try to find routes by lora name
+		loraRoutes, ok := s.loraRoutes[model]
 		if !ok {
 			return types.NamespacedName{}, false, nil, fmt.Errorf("not found route rules for model %s", model)
 		}
+		candidateRoutes = loraRoutes
 		isLora = true
 	}
 
-	// Check parentRefs if specified
-	if len(mr.Spec.ParentRefs) > 0 {
-		// If gatewayKey is provided (not empty), check if ModelRoute matches the specific gateway
-		if gatewayKey != "" {
-			if !s.matchesSpecificGateway(mr, gatewayKey) {
-				return types.NamespacedName{}, false, nil, fmt.Errorf("ModelRoute %s/%s does not match Gateway %s", mr.Namespace, mr.Name, gatewayKey)
-			}
-		} else {
-			// No specific gateway specified, check if it matches any gateway
-			if !s.matchesParentRefs(mr) {
-				return types.NamespacedName{}, false, nil, fmt.Errorf("ModelRoute %s/%s does not match any Gateway", mr.Namespace, mr.Name)
-			}
-		}
-	} else {
-		// If ModelRoute has no parentRefs but gatewayKey is specified, it should not match
-		// (ModelRoute without parentRefs attaches to all Gateways in the same namespace)
-		// But if gatewayKey is specified, we should check namespace match
-		if gatewayKey != "" {
-			// Extract namespace from gatewayKey (format: namespace/name)
-			parts := strings.Split(gatewayKey, "/")
-			if len(parts) == 2 && parts[0] != mr.Namespace {
-				return types.NamespacedName{}, false, nil, fmt.Errorf("ModelRoute %s/%s namespace does not match Gateway namespace %s", mr.Namespace, mr.Name, parts[0])
-			}
-		}
-	}
-
-	rule, err := s.selectRule(model, req, mr.Spec.Rules)
-	if err != nil {
-		return types.NamespacedName{}, false, nil, fmt.Errorf("failed to select route rule: %v", err)
-	}
-
-	dst, err := s.selectDestination(rule.TargetModels)
-	if err != nil {
-		return types.NamespacedName{}, false, nil, fmt.Errorf("failed to select destination: %v", err)
-	}
-
-	return types.NamespacedName{Namespace: mr.Namespace, Name: dst.ModelServerName}, isLora, mr, nil
-}
-
-// matchesParentRefs checks if the ModelRoute matches any of its parentRefs
-func (s *store) matchesParentRefs(mr *aiv1alpha1.ModelRoute) bool {
-	s.gatewayMutex.RLock()
-	defer s.gatewayMutex.RUnlock()
-
-	for _, parentRef := range mr.Spec.ParentRefs {
-		// Get namespace from parentRef, default to ModelRoute's namespace
-		namespace := mr.Namespace
-		if parentRef.Namespace != nil {
-			namespace = string(*parentRef.Namespace)
-		}
-
-		// Get name from parentRef
-		name := string(parentRef.Name)
-		key := fmt.Sprintf("%s/%s", namespace, name)
-		gatewayObj := s.gateways[key]
-		if gatewayObj != nil {
-			// If sectionName is specified, check if the listener exists
-			if parentRef.SectionName != nil {
-				sectionName := string(*parentRef.SectionName)
-				for _, listener := range gatewayObj.Spec.Listeners {
-					if string(listener.Name) == sectionName {
-						return true
-					}
+	// Try each ModelRoute until we find one that matches
+	for _, mr := range candidateRoutes {
+		// Check parentRefs if specified
+		if len(mr.Spec.ParentRefs) > 0 {
+			// If gatewayKey is provided (not empty), check if ModelRoute matches the specific gateway
+			if gatewayKey != "" {
+				if !s.matchesSpecificGateway(mr, gatewayKey) {
+					continue // Try next ModelRoute
 				}
 			} else {
-				// No sectionName specified, match any listener
-				return true
+				// If ModelRoute has parentRefs but gatewayKey is empty, skip it
+				continue // Skip ModelRoute with parentRefs when gatewayKey is not specified
 			}
+		} else {
+			// If gatewayKey is specified, we only match ModelRoute with parentRefs
+			// ModelRoute without parentRefs should not match when gatewayKey is provided
+			if gatewayKey != "" {
+				continue // Skip ModelRoute without parentRefs when gatewayKey is specified
+			}
+			// If gatewayKey is empty, ModelRoute without parentRefs can match
+			// (ModelRoute without parentRefs attaches to all Gateways in the same namespace)
 		}
+
+		// Try to match rules
+		rule, err := s.selectRule(model, req, mr.Spec.Rules)
+		if err != nil {
+			continue // Try next ModelRoute
+		}
+
+		dst, err := s.selectDestination(rule.TargetModels)
+		if err != nil {
+			continue // Try next ModelRoute
+		}
+
+		// Found a matching ModelRoute
+		return types.NamespacedName{Namespace: mr.Namespace, Name: dst.ModelServerName}, isLora, mr, nil
 	}
 
-	return false
+	// No matching ModelRoute found
+	return types.NamespacedName{}, false, nil, fmt.Errorf("no matching ModelRoute found for model %s", model)
 }
 
 // matchesSpecificGateway checks if the ModelRoute matches a specific gateway
@@ -1085,18 +1110,42 @@ func (s *store) GetAllModelRoutes() map[string]*aiv1alpha1.ModelRoute {
 	defer s.routeMutex.RUnlock()
 
 	result := make(map[string]*aiv1alpha1.ModelRoute)
+	// Use routeInfo to get all ModelRoutes by their namespaced name
 	for key, info := range s.routeInfo {
+		// Find the ModelRoute by checking routes or loraRoutes
+		var foundRoute *aiv1alpha1.ModelRoute
 		if info.model != "" {
-			if route, ok := s.routes[info.model]; ok {
-				result[key] = route
+			if routes, ok := s.routes[info.model]; ok {
+				// Find the route matching this key
+				for _, route := range routes {
+					routeKey := route.Namespace + "/" + route.Name
+					if routeKey == key {
+						foundRoute = route
+						break
+					}
+				}
 			}
 		}
-		// Also check lora routes
-		for _, lora := range info.loras {
-			if route, ok := s.loraRoutes[lora]; ok {
-				result[key] = route
-				break // Same route for all loras in a ModelRoute
+		// If not found in routes, check loraRoutes
+		if foundRoute == nil {
+			for _, lora := range info.loras {
+				if loraRoutes, ok := s.loraRoutes[lora]; ok {
+					// Find the route matching this key
+					for _, route := range loraRoutes {
+						routeKey := route.Namespace + "/" + route.Name
+						if routeKey == key {
+							foundRoute = route
+							break
+						}
+					}
+					if foundRoute != nil {
+						break
+					}
+				}
 			}
+		}
+		if foundRoute != nil {
+			result[key] = foundRoute
 		}
 	}
 	return result
@@ -1142,15 +1191,27 @@ func (s *store) GetModelRoute(namespacedName string) *aiv1alpha1.ModelRoute {
 
 	// Try to find the route from the primary model
 	if info.model != "" {
-		if route, ok := s.routes[info.model]; ok {
-			return route
+		if routes, ok := s.routes[info.model]; ok {
+			// Find the route matching this namespacedName
+			for _, route := range routes {
+				routeKey := route.Namespace + "/" + route.Name
+				if routeKey == namespacedName {
+					return route
+				}
+			}
 		}
 	}
 
 	// Try to find the route from lora adapters
 	for _, lora := range info.loras {
-		if route, ok := s.loraRoutes[lora]; ok {
-			return route
+		if loraRoutes, ok := s.loraRoutes[lora]; ok {
+			// Find the route matching this namespacedName
+			for _, route := range loraRoutes {
+				routeKey := route.Namespace + "/" + route.Name
+				if routeKey == namespacedName {
+					return route
+				}
+			}
 		}
 	}
 
@@ -1231,37 +1292,4 @@ func (s *store) GetAllGateways() []*gatewayv1.Gateway {
 		result = append(result, gateway)
 	}
 	return result
-}
-
-// GatewayClass methods (using standard Gateway API)
-
-func (s *store) AddOrUpdateGatewayClass(gatewayClass interface{}) error {
-	s.gatewayClassMutex.Lock()
-	defer s.gatewayClassMutex.Unlock()
-
-	gc, ok := gatewayClass.(*gatewayv1.GatewayClass)
-	if !ok {
-		return fmt.Errorf("invalid gatewayclass type: %T", gatewayClass)
-	}
-
-	key := gc.Name
-	s.gatewayClasses[key] = gc
-	klog.V(4).Infof("Added or updated GatewayClass: %s", key)
-	return nil
-}
-
-func (s *store) DeleteGatewayClass(key string) error {
-	s.gatewayClassMutex.Lock()
-	defer s.gatewayClassMutex.Unlock()
-
-	delete(s.gatewayClasses, key)
-	klog.V(4).Infof("Deleted GatewayClass: %s", key)
-	return nil
-}
-
-func (s *store) GetGatewayClass(key string) interface{} {
-	s.gatewayClassMutex.RLock()
-	defer s.gatewayClassMutex.RUnlock()
-
-	return s.gatewayClasses[key]
 }
