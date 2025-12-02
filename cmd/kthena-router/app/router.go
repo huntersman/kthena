@@ -248,7 +248,7 @@ func (lm *ListenerManager) findBestMatchingListener(port int32, hostname string)
 // createPortHandler creates a gin handler for a specific port that routes to the best matching listener
 func (lm *ListenerManager) createPortHandler(port int32) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.Request.URL.Port() == lm.server.Port {
+		if strconv.Itoa(int(port)) == lm.server.Port {
 			// Handle management endpoints first (healthz, readyz, metrics, debug)
 			path := c.Request.URL.Path
 			if path == "/healthz" {
@@ -323,9 +323,7 @@ func (lm *ListenerManager) createPortHandler(port int32) gin.HandlerFunc {
 			hostname = hostname[:idx]
 		}
 
-		lm.mu.RLock()
 		listenerConfig, found := lm.findBestMatchingListener(port, hostname)
-		lm.mu.RUnlock()
 		if !found {
 			c.JSON(http.StatusNotFound, gin.H{
 				"message": "No matching listener found",
