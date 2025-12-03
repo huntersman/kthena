@@ -360,10 +360,8 @@ func (lm *ListenerManager) createPortHandler(port int32) gin.HandlerFunc {
 			return
 		}
 
-		// Return 404 for all other paths
-		c.JSON(http.StatusNotFound, gin.H{
-			"message": "Not found",
-		})
+		// Handle via HTTPRoute
+		lm.handleHTTPRoute(listenerConfig.GatewayKey)(c)
 	}
 }
 
@@ -748,7 +746,7 @@ func (lm *ListenerManager) handleHTTPRoute(gatewayKey string) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"message": "Invalid InferencePool object"})
 			return
 		}
-		if ip.Spec.TargetPorts == nil || len(ip.Spec.TargetPorts) == 0 {
+		if len(ip.Spec.TargetPorts) == 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"message": "No target port configured"})
 			return
 		}
@@ -809,6 +807,8 @@ func (lm *ListenerManager) handleHTTPRoute(gatewayKey string) gin.HandlerFunc {
 			}
 		}
 		c.Writer.WriteHeader(resp.StatusCode)
-		io.Copy(c.Writer, resp.Body)
+		if _, err := io.Copy(c.Writer, resp.Body); err != nil {
+			klog.Errorf("Failed to copy response body: %v", err)
+		}
 	}
 }

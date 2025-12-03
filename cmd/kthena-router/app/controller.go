@@ -131,7 +131,6 @@ func startControllers(store datastore.Store, stop <-chan struct{}, enableGateway
 
 		// Gateway API Inference Extension controllers are optional
 		if enableGatewayAPIInferenceExtension {
-
 			dynamicClient, err := dynamic.NewForConfig(cfg)
 			if err != nil {
 				klog.Fatalf("Error building dynamic client: %s", err.Error())
