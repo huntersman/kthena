@@ -19,7 +19,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -35,7 +34,6 @@ import (
 	"github.com/volcano-sh/kthena/pkg/kthena-router/datastore"
 	"github.com/volcano-sh/kthena/pkg/kthena-router/debug"
 	"github.com/volcano-sh/kthena/pkg/kthena-router/router"
-	inferencev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 )
 
 const (
@@ -297,6 +295,18 @@ func (lm *ListenerManager) createPortHandler(port int32) gin.HandlerFunc {
 					debugHandler.ListPods(c)
 					return
 				}
+				if path == "/debug/config_dump/gateways" {
+					debugHandler.ListGateways(c)
+					return
+				}
+				if path == "/debug/config_dump/httproutes" {
+					debugHandler.ListHTTPRoutes(c)
+					return
+				}
+				if path == "/debug/config_dump/inferencepools" {
+					debugHandler.ListInferencePools(c)
+					return
+				}
 				// Handle parameterized debug routes
 				if strings.HasPrefix(path, "/debug/config_dump/namespaces/") {
 					parts := strings.Split(strings.TrimPrefix(path, "/debug/config_dump/namespaces/"), "/")
@@ -319,6 +329,18 @@ func (lm *ListenerManager) createPortHandler(port int32) gin.HandlerFunc {
 						}
 						if resourceType == "pods" {
 							debugHandler.GetPod(c)
+							return
+						}
+						if resourceType == "gateways" {
+							debugHandler.GetGateway(c)
+							return
+						}
+						if resourceType == "httproutes" {
+							debugHandler.GetHTTPRoute(c)
+							return
+						}
+						if resourceType == "inferencepools" {
+							debugHandler.GetInferencePool(c)
 							return
 						}
 					}
@@ -354,14 +376,22 @@ func (lm *ListenerManager) createPortHandler(port int32) gin.HandlerFunc {
 			return
 		}
 
-		// Handle /v1/*path
-		if strings.HasPrefix(c.Request.URL.Path, "/v1/") {
-			lm.router.HandlerFunc()(c)
-			return
-		}
-
 		// Handle via HTTPRoute
-		lm.handleHTTPRoute(listenerConfig.GatewayKey)(c)
+		if lm.server.EnableGatewayAPIInferenceExtension {
+			lm.handleHTTPRoute(listenerConfig.GatewayKey)(c)
+			return
+		} else {
+			// Handle /v1/*path
+			if strings.HasPrefix(c.Request.URL.Path, "/v1/") {
+				lm.router.HandlerFunc()(c)
+				return
+			}
+
+			// Return 404 for all other paths
+			c.JSON(http.StatusNotFound, gin.H{
+				"message": "Not found",
+			})
+		}
 	}
 }
 
@@ -649,9 +679,8 @@ func (lm *ListenerManager) handleHTTPRoute(gatewayKey string) gin.HandlerFunc {
 
 		// Match HTTPRoute by path and hostname
 		var matchedRoute *gatewayv1.HTTPRoute
-		for _, routeObj := range httpRoutes {
-			route, ok := routeObj.(*gatewayv1.HTTPRoute)
-			if !ok {
+		for _, route := range httpRoutes {
+			if route == nil {
 				continue
 			}
 
@@ -709,7 +738,6 @@ func (lm *ListenerManager) handleHTTPRoute(gatewayKey string) gin.HandlerFunc {
 
 		// Find InferencePool backendRef
 		var inferencePoolName types.NamespacedName
-		var targetPort int32
 		found := false
 		for _, rule := range matchedRoute.Spec.Rules {
 			for _, backendRef := range rule.BackendRefs {
@@ -734,81 +762,10 @@ func (lm *ListenerManager) handleHTTPRoute(gatewayKey string) gin.HandlerFunc {
 			return
 		}
 
-		// Get InferencePool
-		ipKey := fmt.Sprintf("%s/%s", inferencePoolName.Namespace, inferencePoolName.Name)
-		ipObj := lm.store.GetInferencePool(ipKey)
-		if ipObj == nil {
-			c.JSON(http.StatusNotFound, gin.H{"message": "InferencePool not found"})
-			return
-		}
-		ip, ok := ipObj.(*inferencev1.InferencePool)
-		if !ok || ip == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "Invalid InferencePool object"})
-			return
-		}
-		if len(ip.Spec.TargetPorts) == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"message": "No target port configured"})
-			return
-		}
-		if ip.Spec.TargetPorts[0].Number == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid target port number"})
-			return
-		}
+		// Pass InferencePool information to doLoadbalance via context
+		c.Set("inferencePoolName", inferencePoolName)
 
-		// Get target port
-		targetPort = int32(ip.Spec.TargetPorts[0].Number)
-
-		// Get pods from InferencePool
-		pods, err := lm.store.GetPodsByInferencePool(inferencePoolName)
-		if err != nil || len(pods) == 0 {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"message": "No pods available"})
-			return
-		}
-
-		// Simple round-robin selection for now
-		// TODO: Use scheduler for intelligent pod selection
-		if len(pods) == 0 {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"message": "No pods available"})
-			return
-		}
-
-		selectedPod := pods[0].Pod
-		podIP := selectedPod.Status.PodIP
-		if podIP == "" {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"message": "Pod IP not available"})
-			return
-		}
-
-		// Simple HTTP proxy
-		targetURL := fmt.Sprintf("http://%s:%d%s", podIP, targetPort, c.Request.URL.Path)
-		client := &http.Client{Timeout: 30 * time.Second}
-		req, err := http.NewRequest(c.Request.Method, targetURL, c.Request.Body)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
-			return
-		}
-
-		for key, values := range c.Request.Header {
-			for _, value := range values {
-				req.Header.Add(key, value)
-			}
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"message": err.Error()})
-			return
-		}
-		defer resp.Body.Close()
-
-		for key, values := range resp.Header {
-			for _, value := range values {
-				c.Writer.Header().Add(key, value)
-			}
-		}
-		c.Writer.WriteHeader(resp.StatusCode)
-		if _, err := io.Copy(c.Writer, resp.Body); err != nil {
-			klog.Errorf("Failed to copy response body: %v", err)
-		}
+		// Use existing doLoadbalance infrastructure which will detect InferencePool from context
+		lm.router.HandlerFunc()(c)
 	}
 }

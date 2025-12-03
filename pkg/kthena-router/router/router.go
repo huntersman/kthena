@@ -255,50 +255,111 @@ func (r *Router) HandlerFunc() gin.HandlerFunc {
 
 func (r *Router) doLoadbalance(c *gin.Context, modelRequest ModelRequest) {
 	modelName := modelRequest["model"].(string)
-	// step 3: Find pods and model server details
-	// Get gateway key from context if available (set by Gateway listener)
-	var gatewayKey string
-	if key, exists := c.Get(GatewayKey); exists {
-		if k, ok := key.(string); ok {
-			gatewayKey = k
+
+	// Check if this is an InferencePool request from HTTPRoute
+	var pods []*datastore.PodInfo
+	var port int32
+	var modelServerName types.NamespacedName
+	var modelRoute *v1alpha1.ModelRoute
+	var modelServer *v1alpha1.ModelServer
+
+	if inferencePoolName, exists := c.Get("inferencePoolName"); exists {
+		// This is an InferencePool request via HTTPRoute
+		ipName := inferencePoolName.(types.NamespacedName)
+
+		// Get InferencePool from store
+		ipKey := fmt.Sprintf("%s/%s", ipName.Namespace, ipName.Name)
+		ip := r.store.GetInferencePool(ipKey)
+		if ip == nil {
+			accesslog.SetError(c, "inferencepool_not_found", "InferencePool not found")
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "InferencePool not found"})
+			return
 		}
-	}
-	modelServerName, isLora, modelRoute, err := r.store.MatchModelServer(modelName, c.Request, gatewayKey)
-	if err != nil {
-		accesslog.SetError(c, "model_server_matching", fmt.Sprintf("can't find corresponding model server: %v", err))
-		c.AbortWithStatusJSON(http.StatusNotFound, fmt.Sprintf("can't find corresponding model server: %v", err))
-		return
-	}
-	klog.V(4).Infof("modelServer is %v, is_lora: %v", modelServerName, isLora)
-	pods, modelServer, err := r.getPodsAndServer(modelServerName)
-	if err != nil || len(pods) == 0 {
-		klog.Errorf("failed to get pods and model server: %v, %v", modelServerName, err)
-		accesslog.SetError(c, "pod_discovery", fmt.Sprintf("can't find model server: %v", modelServerName))
-		c.AbortWithStatusJSON(http.StatusNotFound, fmt.Sprintf("can't find model server: %v", modelServerName))
-		return
+
+		// Get target port from InferencePool
+		if len(ip.Spec.TargetPorts) == 0 {
+			accesslog.SetError(c, "inferencepool_no_port", "No target port configured")
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "No target port configured"})
+			return
+		}
+		if ip.Spec.TargetPorts[0].Number == 0 {
+			accesslog.SetError(c, "inferencepool_invalid_port", "Invalid target port number")
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "Invalid target port number"})
+			return
+		}
+
+		port = int32(ip.Spec.TargetPorts[0].Number)
+
+		// Get pods from InferencePool
+		var err error
+		pods, err = r.store.GetPodsByInferencePool(ipName)
+		if err != nil || len(pods) == 0 {
+			accesslog.SetError(c, "pod_discovery", "No pods available for InferencePool")
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"message": "No pods available"})
+			return
+		}
+
+		// Use InferencePool name as the "model server" for tracking
+		modelServerName = ipName
+		modelRoute = nil
+
+		klog.V(4).Infof("Using InferencePool: %v, port: %d, pods: %d", ipName, port, len(pods))
+	} else {
+		// Regular ModelServer request
+		// step 3: Find pods and model server details
+		// Get gateway key from context if available (set by Gateway listener)
+		var gatewayKey string
+		if key, exists := c.Get(GatewayKey); exists {
+			if k, ok := key.(string); ok {
+				gatewayKey = k
+			}
+		}
+		var isLora bool
+		var err error
+		modelServerName, isLora, modelRoute, err = r.store.MatchModelServer(modelName, c.Request, gatewayKey)
+		if err != nil {
+			accesslog.SetError(c, "model_server_matching", fmt.Sprintf("can't find corresponding model server: %v", err))
+			c.AbortWithStatusJSON(http.StatusNotFound, fmt.Sprintf("can't find corresponding model server: %v", err))
+			return
+		}
+		klog.V(4).Infof("modelServer is %v, is_lora: %v", modelServerName, isLora)
+
+		pods, modelServer, err = r.getPodsAndServer(modelServerName)
+		if err != nil || len(pods) == 0 {
+			klog.Errorf("failed to get pods and model server: %v, %v", modelServerName, err)
+			accesslog.SetError(c, "pod_discovery", fmt.Sprintf("can't find model server: %v", modelServerName))
+			c.AbortWithStatusJSON(http.StatusNotFound, fmt.Sprintf("can't find model server: %v", modelServerName))
+			return
+		}
+
+		model := modelServer.Spec.Model
+		if model != nil && !isLora {
+			modelRequest["model"] = *model
+		}
+
+		port = modelServer.Spec.WorkloadPort.Port
 	}
 
-	model := modelServer.Spec.Model
-	if model != nil && !isLora {
-		modelRequest["model"] = *model
-	}
-
-	var pdGroup *v1alpha1.PDGroup
-	if modelServer.Spec.WorkloadSelector != nil {
-		pdGroup = modelServer.Spec.WorkloadSelector.PDGroup
-	}
+	// Common scheduling logic for both ModelServer and InferencePool
 	prompt, err := utils.ParsePrompt(modelRequest)
 	if err != nil {
 		accesslog.SetError(c, "prompt_parsing", "prompt not found")
 		c.AbortWithStatusJSON(http.StatusNotFound, "prompt not found")
 		return
 	}
+
 	// Get metrics recorder from gin context
 	var metricsRecorder *metrics.RequestMetricsRecorder
 	if recorder, exists := c.Get("metricsRecorder"); exists {
 		if rec, ok := recorder.(*metrics.RequestMetricsRecorder); ok {
 			metricsRecorder = rec
 		}
+	}
+
+	// Get PDGroup if available (only for ModelServer)
+	var pdGroup *v1alpha1.PDGroup
+	if modelServer != nil && modelServer.Spec.WorkloadSelector != nil {
+		pdGroup = modelServer.Spec.WorkloadSelector.PDGroup
 	}
 
 	ctx := &framework.Context{
@@ -334,7 +395,7 @@ func (r *Router) doLoadbalance(c *gin.Context, modelRequest ModelRequest) {
 	}
 
 	req := c.Request
-	if err := r.proxyModelEndpoint(c, req, ctx, modelRequest, modelServer.Spec.WorkloadPort.Port); err != nil {
+	if err := r.proxyModelEndpoint(c, req, ctx, modelRequest, port); err != nil {
 		klog.Errorf("request failed reqID: %s: %v", c.Request.Header.Get("x-request-id"), err)
 		accesslog.SetError(c, "proxy", "request processing failed")
 		c.AbortWithStatusJSON(http.StatusInternalServerError, "request processing failed")

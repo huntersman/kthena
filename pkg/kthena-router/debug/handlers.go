@@ -200,16 +200,17 @@ func (h *DebugHandler) ListHTTPRoutes(c *gin.Context) {
 	httpRoutes := h.store.GetAllHTTPRoutes()
 
 	var responses []HTTPRouteResponse
-	for _, httpRouteObj := range httpRoutes {
-		if hr, ok := httpRouteObj.(*gatewayv1.HTTPRoute); ok {
-			response := HTTPRouteResponse{
-				Name:      hr.Name,
-				Namespace: hr.Namespace,
-				Spec:      hr.Spec,
-				Status:    hr.Status,
-			}
-			responses = append(responses, response)
+	for _, hr := range httpRoutes {
+		if hr == nil {
+			continue
 		}
+		response := HTTPRouteResponse{
+			Name:      hr.Name,
+			Namespace: hr.Namespace,
+			Spec:      hr.Spec,
+			Status:    hr.Status,
+		}
+		responses = append(responses, response)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"httproutes": responses})
@@ -220,16 +221,17 @@ func (h *DebugHandler) ListInferencePools(c *gin.Context) {
 	inferencePools := h.store.GetAllInferencePools()
 
 	var responses []InferencePoolResponse
-	for _, inferencePoolObj := range inferencePools {
-		if ip, ok := inferencePoolObj.(*inferencev1.InferencePool); ok {
-			response := InferencePoolResponse{
-				Name:      ip.Name,
-				Namespace: ip.Namespace,
-				Spec:      ip.Spec,
-				Status:    ip.Status,
-			}
-			responses = append(responses, response)
+	for _, ip := range inferencePools {
+		if ip == nil {
+			continue
 		}
+		response := InferencePoolResponse{
+			Name:      ip.Name,
+			Namespace: ip.Namespace,
+			Spec:      ip.Spec,
+			Status:    ip.Status,
+		}
+		responses = append(responses, response)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"inferencepools": responses})
@@ -369,16 +371,10 @@ func (h *DebugHandler) GetHTTPRoute(c *gin.Context) {
 	}
 
 	key := fmt.Sprintf("%s/%s", namespace, name)
-	httpRouteObj := h.store.GetHTTPRoute(key)
+	hr := h.store.GetHTTPRoute(key)
 
-	if httpRouteObj == nil {
+	if hr == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "HTTPRoute not found"})
-		return
-	}
-
-	hr, ok := httpRouteObj.(*gatewayv1.HTTPRoute)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid HTTPRoute object"})
 		return
 	}
 
@@ -403,16 +399,10 @@ func (h *DebugHandler) GetInferencePool(c *gin.Context) {
 	}
 
 	key := fmt.Sprintf("%s/%s", namespace, name)
-	inferencePoolObj := h.store.GetInferencePool(key)
+	ip := h.store.GetInferencePool(key)
 
-	if inferencePoolObj == nil {
+	if ip == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "InferencePool not found"})
-		return
-	}
-
-	ip, ok := inferencePoolObj.(*inferencev1.InferencePool)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid InferencePool object"})
 		return
 	}
 
