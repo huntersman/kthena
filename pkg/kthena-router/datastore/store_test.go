@@ -466,8 +466,8 @@ func TestStoreDeleteModelRoute(t *testing.T) {
 	t.Run("delete route with model name", func(t *testing.T) {
 		s := &store{
 			routeInfo:           make(map[string]*modelRouteInfo),
-			routes:              make(map[string]*aiv1alpha1.ModelRoute),
-			loraRoutes:          make(map[string]*aiv1alpha1.ModelRoute),
+			routes:              make(map[string][]*aiv1alpha1.ModelRoute),
+			loraRoutes:          make(map[string][]*aiv1alpha1.ModelRoute),
 			callbacks:           make(map[string][]CallbackFunc),
 			requestWaitingQueue: sync.Map{},
 		}
@@ -505,9 +505,9 @@ func TestStoreDeleteModelRoute(t *testing.T) {
 		// Verify state
 		s.routeMutex.RLock()
 		assert.Nil(t, s.routeInfo["default/test-route"])
-		assert.Nil(t, s.routes["test-model"])
-		assert.Nil(t, s.loraRoutes["lora1"])
-		assert.Nil(t, s.loraRoutes["lora2"])
+		assert.Empty(t, s.routes["test-model"])
+		assert.Empty(t, s.loraRoutes["lora1"])
+		assert.Empty(t, s.loraRoutes["lora2"])
 		s.routeMutex.RUnlock()
 
 		// Verify queue is deleted
@@ -523,8 +523,8 @@ func TestStoreDeleteModelRoute(t *testing.T) {
 	t.Run("delete route with only lora adapters", func(t *testing.T) {
 		s := &store{
 			routeInfo:           make(map[string]*modelRouteInfo),
-			routes:              make(map[string]*aiv1alpha1.ModelRoute),
-			loraRoutes:          make(map[string]*aiv1alpha1.ModelRoute),
+			routes:              make(map[string][]*aiv1alpha1.ModelRoute),
+			loraRoutes:          make(map[string][]*aiv1alpha1.ModelRoute),
 			callbacks:           make(map[string][]CallbackFunc),
 			requestWaitingQueue: sync.Map{},
 		}
@@ -551,16 +551,16 @@ func TestStoreDeleteModelRoute(t *testing.T) {
 		// Verify state
 		s.routeMutex.RLock()
 		assert.Nil(t, s.routeInfo["test-ns/lora-route"])
-		assert.Nil(t, s.loraRoutes["lora3"])
-		assert.Nil(t, s.loraRoutes["lora4"])
+		assert.Empty(t, s.loraRoutes["lora3"])
+		assert.Empty(t, s.loraRoutes["lora4"])
 		s.routeMutex.RUnlock()
 	})
 
 	t.Run("delete non-existent route", func(t *testing.T) {
 		s := &store{
 			routeInfo:           make(map[string]*modelRouteInfo),
-			routes:              make(map[string]*aiv1alpha1.ModelRoute),
-			loraRoutes:          make(map[string]*aiv1alpha1.ModelRoute),
+			routes:              make(map[string][]*aiv1alpha1.ModelRoute),
+			loraRoutes:          make(map[string][]*aiv1alpha1.ModelRoute),
 			callbacks:           make(map[string][]CallbackFunc),
 			requestWaitingQueue: sync.Map{},
 		}
@@ -586,8 +586,8 @@ func TestStoreDeleteModelRoute(t *testing.T) {
 	t.Run("delete route while preserving others", func(t *testing.T) {
 		s := &store{
 			routeInfo:           make(map[string]*modelRouteInfo),
-			routes:              make(map[string]*aiv1alpha1.ModelRoute),
-			loraRoutes:          make(map[string]*aiv1alpha1.ModelRoute),
+			routes:              make(map[string][]*aiv1alpha1.ModelRoute),
+			loraRoutes:          make(map[string][]*aiv1alpha1.ModelRoute),
 			callbacks:           make(map[string][]CallbackFunc),
 			requestWaitingQueue: sync.Map{},
 		}
@@ -630,10 +630,10 @@ func TestStoreDeleteModelRoute(t *testing.T) {
 		s.routeMutex.RLock()
 		assert.Nil(t, s.routeInfo["default/route1"])
 		assert.NotNil(t, s.routeInfo["default/route2"])
-		assert.Nil(t, s.routes["model1"])
-		assert.NotNil(t, s.routes["model2"])
-		assert.Nil(t, s.loraRoutes["lora1"])
-		assert.NotNil(t, s.loraRoutes["lora2"])
+		assert.Empty(t, s.routes["model1"])
+		assert.NotEmpty(t, s.routes["model2"])
+		assert.Empty(t, s.loraRoutes["lora1"])
+		assert.NotEmpty(t, s.loraRoutes["lora2"])
 		s.routeMutex.RUnlock()
 
 		// Check queues
@@ -648,8 +648,8 @@ func TestStoreDeleteModelRoute(t *testing.T) {
 func TestStoreDeleteModelRoute_RequestQueueCleanup(t *testing.T) {
 	s := &store{
 		routeInfo:           make(map[string]*modelRouteInfo),
-		routes:              make(map[string]*aiv1alpha1.ModelRoute),
-		loraRoutes:          make(map[string]*aiv1alpha1.ModelRoute),
+		routes:              make(map[string][]*aiv1alpha1.ModelRoute),
+		loraRoutes:          make(map[string][]*aiv1alpha1.ModelRoute),
 		callbacks:           make(map[string][]CallbackFunc),
 		requestWaitingQueue: sync.Map{},
 	}
@@ -691,8 +691,8 @@ func TestStoreDeleteModelRoute_RequestQueueCleanup(t *testing.T) {
 func TestStoreDeleteModelRoute_ConcurrentAccess(t *testing.T) {
 	s := &store{
 		routeInfo:           make(map[string]*modelRouteInfo),
-		routes:              make(map[string]*aiv1alpha1.ModelRoute),
-		loraRoutes:          make(map[string]*aiv1alpha1.ModelRoute),
+		routes:              make(map[string][]*aiv1alpha1.ModelRoute),
+		loraRoutes:          make(map[string][]*aiv1alpha1.ModelRoute),
 		callbacks:           make(map[string][]CallbackFunc),
 		requestWaitingQueue: sync.Map{},
 	}
@@ -832,8 +832,8 @@ func TestStoreMatchModelServer(t *testing.T) {
 			setupStore: func() *store {
 				s := &store{
 					routeInfo:  make(map[string]*modelRouteInfo),
-					routes:     make(map[string]*aiv1alpha1.ModelRoute),
-					loraRoutes: make(map[string]*aiv1alpha1.ModelRoute),
+					routes:     make(map[string][]*aiv1alpha1.ModelRoute),
+					loraRoutes: make(map[string][]*aiv1alpha1.ModelRoute),
 				}
 
 				// Create a ModelRoute with base model and LoRA adapters
@@ -872,8 +872,8 @@ func TestStoreMatchModelServer(t *testing.T) {
 			setupStore: func() *store {
 				s := &store{
 					routeInfo:  make(map[string]*modelRouteInfo),
-					routes:     make(map[string]*aiv1alpha1.ModelRoute),
-					loraRoutes: make(map[string]*aiv1alpha1.ModelRoute),
+					routes:     make(map[string][]*aiv1alpha1.ModelRoute),
+					loraRoutes: make(map[string][]*aiv1alpha1.ModelRoute),
 				}
 
 				mr := &aiv1alpha1.ModelRoute{
@@ -911,8 +911,8 @@ func TestStoreMatchModelServer(t *testing.T) {
 			setupStore: func() *store {
 				s := &store{
 					routeInfo:  make(map[string]*modelRouteInfo),
-					routes:     make(map[string]*aiv1alpha1.ModelRoute),
-					loraRoutes: make(map[string]*aiv1alpha1.ModelRoute),
+					routes:     make(map[string][]*aiv1alpha1.ModelRoute),
+					loraRoutes: make(map[string][]*aiv1alpha1.ModelRoute),
 				}
 
 				mr := &aiv1alpha1.ModelRoute{
@@ -971,8 +971,8 @@ func TestStoreMatchModelServer(t *testing.T) {
 			setupStore: func() *store {
 				s := &store{
 					routeInfo:  make(map[string]*modelRouteInfo),
-					routes:     make(map[string]*aiv1alpha1.ModelRoute),
-					loraRoutes: make(map[string]*aiv1alpha1.ModelRoute),
+					routes:     make(map[string][]*aiv1alpha1.ModelRoute),
+					loraRoutes: make(map[string][]*aiv1alpha1.ModelRoute),
 				}
 				s.AddOrUpdateModelRoute(createComplexModelRoute())
 				return s
@@ -988,8 +988,8 @@ func TestStoreMatchModelServer(t *testing.T) {
 			setupStore: func() *store {
 				s := &store{
 					routeInfo:  make(map[string]*modelRouteInfo),
-					routes:     make(map[string]*aiv1alpha1.ModelRoute),
-					loraRoutes: make(map[string]*aiv1alpha1.ModelRoute),
+					routes:     make(map[string][]*aiv1alpha1.ModelRoute),
+					loraRoutes: make(map[string][]*aiv1alpha1.ModelRoute),
 				}
 				s.AddOrUpdateModelRoute(createComplexModelRoute())
 				return s
@@ -1005,8 +1005,8 @@ func TestStoreMatchModelServer(t *testing.T) {
 			setupStore: func() *store {
 				s := &store{
 					routeInfo:  make(map[string]*modelRouteInfo),
-					routes:     make(map[string]*aiv1alpha1.ModelRoute),
-					loraRoutes: make(map[string]*aiv1alpha1.ModelRoute),
+					routes:     make(map[string][]*aiv1alpha1.ModelRoute),
+					loraRoutes: make(map[string][]*aiv1alpha1.ModelRoute),
 				}
 				s.AddOrUpdateModelRoute(createComplexModelRoute())
 				return s
@@ -1022,8 +1022,8 @@ func TestStoreMatchModelServer(t *testing.T) {
 			setupStore: func() *store {
 				s := &store{
 					routeInfo:  make(map[string]*modelRouteInfo),
-					routes:     make(map[string]*aiv1alpha1.ModelRoute),
-					loraRoutes: make(map[string]*aiv1alpha1.ModelRoute),
+					routes:     make(map[string][]*aiv1alpha1.ModelRoute),
+					loraRoutes: make(map[string][]*aiv1alpha1.ModelRoute),
 				}
 				s.AddOrUpdateModelRoute(createComplexModelRoute())
 				return s
@@ -1039,8 +1039,8 @@ func TestStoreMatchModelServer(t *testing.T) {
 			setupStore: func() *store {
 				s := &store{
 					routeInfo:  make(map[string]*modelRouteInfo),
-					routes:     make(map[string]*aiv1alpha1.ModelRoute),
-					loraRoutes: make(map[string]*aiv1alpha1.ModelRoute),
+					routes:     make(map[string][]*aiv1alpha1.ModelRoute),
+					loraRoutes: make(map[string][]*aiv1alpha1.ModelRoute),
 				}
 
 				mr := &aiv1alpha1.ModelRoute{
@@ -1089,8 +1089,8 @@ func TestStoreMatchModelServer(t *testing.T) {
 			setupStore: func() *store {
 				s := &store{
 					routeInfo:  make(map[string]*modelRouteInfo),
-					routes:     make(map[string]*aiv1alpha1.ModelRoute),
-					loraRoutes: make(map[string]*aiv1alpha1.ModelRoute),
+					routes:     make(map[string][]*aiv1alpha1.ModelRoute),
+					loraRoutes: make(map[string][]*aiv1alpha1.ModelRoute),
 				}
 
 				mr := &aiv1alpha1.ModelRoute{
@@ -1139,8 +1139,8 @@ func TestStoreMatchModelServer(t *testing.T) {
 			setupStore: func() *store {
 				s := &store{
 					routeInfo:  make(map[string]*modelRouteInfo),
-					routes:     make(map[string]*aiv1alpha1.ModelRoute),
-					loraRoutes: make(map[string]*aiv1alpha1.ModelRoute),
+					routes:     make(map[string][]*aiv1alpha1.ModelRoute),
+					loraRoutes: make(map[string][]*aiv1alpha1.ModelRoute),
 				}
 
 				mr := &aiv1alpha1.ModelRoute{
@@ -1189,8 +1189,8 @@ func TestStoreMatchModelServer(t *testing.T) {
 			setupStore: func() *store {
 				return &store{
 					routeInfo:  make(map[string]*modelRouteInfo),
-					routes:     make(map[string]*aiv1alpha1.ModelRoute),
-					loraRoutes: make(map[string]*aiv1alpha1.ModelRoute),
+					routes:     make(map[string][]*aiv1alpha1.ModelRoute),
+					loraRoutes: make(map[string][]*aiv1alpha1.ModelRoute),
 				}
 			},
 			modelName:      "non-existent-model",
@@ -1204,7 +1204,7 @@ func TestStoreMatchModelServer(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := tt.setupStore()
-			server, isLora, _, err := s.MatchModelServer(tt.modelName, tt.request)
+			server, isLora, _, err := s.MatchModelServer(tt.modelName, tt.request, "")
 
 			if tt.expectedError {
 				assert.Error(t, err)

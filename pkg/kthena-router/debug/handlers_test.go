@@ -30,6 +30,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aiv1alpha1 "github.com/volcano-sh/kthena/pkg/apis/networking/v1alpha1"
 	"github.com/volcano-sh/kthena/pkg/kthena-router/datastore"
@@ -76,8 +77,8 @@ func (m *MockStore) DeletePod(podName types.NamespacedName) error {
 	return args.Error(0)
 }
 
-func (m *MockStore) MatchModelServer(modelName string, request *http.Request) (types.NamespacedName, bool, *aiv1alpha1.ModelRoute, error) {
-	args := m.Called(modelName, request)
+func (m *MockStore) MatchModelServer(modelName string, request *http.Request, gatewayKey string) (types.NamespacedName, bool, *aiv1alpha1.ModelRoute, error) {
+	args := m.Called(modelName, request, gatewayKey)
 	var modelRoute *aiv1alpha1.ModelRoute
 	if args.Get(2) != nil {
 		modelRoute = args.Get(2).(*aiv1alpha1.ModelRoute)
@@ -194,6 +195,41 @@ func (m *MockStore) GetModelRoute(namespacedName string) *aiv1alpha1.ModelRoute 
 		return nil
 	}
 	return args.Get(0).(*aiv1alpha1.ModelRoute)
+}
+
+// Gateway methods (using standard Gateway API)
+func (m *MockStore) AddOrUpdateGateway(gateway *gatewayv1.Gateway) error {
+	args := m.Called(gateway)
+	return args.Error(0)
+}
+
+func (m *MockStore) DeleteGateway(key string) error {
+	args := m.Called(key)
+	return args.Error(0)
+}
+
+func (m *MockStore) GetGateway(key string) *gatewayv1.Gateway {
+	args := m.Called(key)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(*gatewayv1.Gateway)
+}
+
+func (m *MockStore) GetGatewaysByNamespace(namespace string) []*gatewayv1.Gateway {
+	args := m.Called(namespace)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]*gatewayv1.Gateway)
+}
+
+func (m *MockStore) GetAllGateways() []*gatewayv1.Gateway {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]*gatewayv1.Gateway)
 }
 
 func TestListModelRoutes(t *testing.T) {
