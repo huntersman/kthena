@@ -22,7 +22,6 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
-	"github.com/prometheus/common/model"
 )
 
 // This function refer to aibrix(https://github.com/vllm-project/aibrix/blob/main/pkg/metrics/utils.go)
@@ -37,7 +36,7 @@ func ParseMetricsURL(url string) (map[string]*dto.MetricFamily, error) {
 		}
 	}()
 
-	parser := expfmt.NewTextParser(model.LegacyValidation)
+	var parser expfmt.TextParser
 	allMetrics, err := parser.TextToMetricFamilies(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("Error parsing metric families: %v\n", err)
