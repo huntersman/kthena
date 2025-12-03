@@ -17,11 +17,12 @@ limitations under the License.
 package controller
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"reflect"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -615,6 +616,7 @@ func (c *ModelServingController) scaleDownServingGroups(ctx context.Context, mi 
 	// Calculate scores for all ServingGroups
 	servingGroupScores := make([]ServingGroupWithScore, 0, len(servingGroupList))
 
+	needsSort := false
 	for _, group := range servingGroupList {
 		score, err := c.calculateServingGroupScore(mi, group.Name)
 		if err != nil {
@@ -627,24 +629,29 @@ func (c *ModelServingController) scaleDownServingGroups(ctx context.Context, mi 
 			Score: score,
 			Index: groupIndex,
 		})
+		if score != 0 {
+			needsSort = true
+		}
 	}
 
-	// Sort ServingGroups by score in ascending order
-	// If scores are equal, sort by group index in descending order.
-	// Ensure that when binpack scale down is not performed, the previous scaling-down process is followed.
-	sort.Slice(servingGroupScores, func(i, j int) bool {
-		if servingGroupScores[i].Score != servingGroupScores[j].Score {
-			return servingGroupScores[i].Score < servingGroupScores[j].Score
-		}
-		return servingGroupScores[i].Index > servingGroupScores[j].Index
-	})
+	// Sort ServingGroups by score in descending order, and by index in ascending order if scores are equal.
+	// This puts items with lower scores (or higher indices when scores are equal) at the end.
+	// Skip sorting when all scores are 0 because servingGroupList is already sorted by index in ascending order.
+	if needsSort {
+		slices.SortFunc(servingGroupScores, func(a, b ServingGroupWithScore) int {
+			if a.Score != b.Score {
+				return cmp.Compare(b.Score, a.Score)
+			}
+			return cmp.Compare(a.Index, b.Index)
+		})
+	}
 
 	var allErrors []error
-	// Delete ServingGroups with the lowest scores
-	toDeleteCount := len(servingGroupList) - expectedCount
-	for i := 0; i < toDeleteCount; i++ {
-		c.DeleteServingGroup(mi, servingGroupScores[i].Name)
-		if err := c.gangManager.DeletePodGroupWhenServingGroupDeleted(ctx, mi, servingGroupScores[i].Name); err != nil {
+	// Delete items from end to front. Items at the end have lower scores (or higher indices when scores are 0).
+	for i := len(servingGroupScores) - 1; i >= expectedCount; i-- {
+		targetName := servingGroupScores[i].Name
+		c.DeleteServingGroup(mi, targetName)
+		if err := c.gangManager.DeletePodGroupWhenServingGroupDeleted(ctx, mi, targetName); err != nil {
 			allErrors = append(allErrors, err)
 		}
 	}
@@ -799,6 +806,7 @@ func (c *ModelServingController) scaleDownRoles(ctx context.Context, mi *workloa
 	// Calculate scores for all Roles
 	var roleScores []RoleWithScore
 
+	needsSort := false
 	for _, role := range roleList {
 		// Get score for each Role.
 		// If not set 'PodDeletionCost` annotation, the score is set to 0.
@@ -813,17 +821,22 @@ func (c *ModelServingController) scaleDownRoles(ctx context.Context, mi *workloa
 			Score: score,
 			Index: roleIndex,
 		})
+		if score != 0 {
+			needsSort = true
+		}
 	}
 
-	// Sort Roles by score in ascending order
-	// If scores are equal, sort by group index in descending order.
-	// Ensure that when binpack scale down is not performed, the previous scaling-down process is followed.
-	sort.Slice(roleScores, func(i, j int) bool {
-		if roleScores[i].Score != roleScores[j].Score {
-			return roleScores[i].Score < roleScores[j].Score
-		}
-		return roleScores[i].Index > roleScores[j].Index
-	})
+	// Sort Roles by score in descending order, and by index in ascending order if scores are equal.
+	// This puts items with lower scores (or higher indices when scores are equal) at the end.
+	// Skip sorting when all scores are 0 because roleList is already sorted by index in ascending order.
+	if needsSort {
+		slices.SortFunc(roleScores, func(a, b RoleWithScore) int {
+			if a.Score != b.Score {
+				return cmp.Compare(b.Score, a.Score)
+			}
+			return cmp.Compare(a.Index, b.Index)
+		})
+	}
 	// Role needs to scale down, and the ServingGroup status needs to be set to Scaling
 	if c.store.GetServingGroupStatus(utils.GetNamespaceName(mi), groupName) != datastore.ServingGroupScaling {
 		err := c.store.UpdateServingGroupStatus(utils.GetNamespaceName(mi), groupName, datastore.ServingGroupScaling)
@@ -833,10 +846,10 @@ func (c *ModelServingController) scaleDownRoles(ctx context.Context, mi *workloa
 		}
 	}
 
-	// Delete Roles with the lowest scores
-	toDeleteCount := len(roleList) - expectedCount
-	for i := 0; i < toDeleteCount; i++ {
-		c.DeleteRole(ctx, mi, groupName, targetRole.Name, roleScores[i].Name)
+	// Delete items from end to front. Items at the end have lower scores (or higher indices when scores are 0).
+	for i := len(roleScores) - 1; i >= expectedCount; i-- {
+		targetName := roleScores[i].Name
+		c.DeleteRole(ctx, mi, groupName, targetRole.Name, targetName)
 	}
 }
 
