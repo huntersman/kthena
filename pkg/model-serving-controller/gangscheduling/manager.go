@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -358,101 +359,12 @@ func (m *Manager) AnnotatePodWithPodGroup(pod *corev1.Pod, mi *workloadv1alpha1.
 	pod.Annotations[batchv1alpha1.TaskSpecKey] = taskName
 }
 
-// equalMinTaskMember compares two MinTaskMember maps
-func equalMinTaskMember(a, b map[string]int32) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for key, valueA := range a {
-		if valueB, exists := b[key]; !exists || valueA != valueB {
-			return false
-		}
-	}
-
-	return true
-}
-
-// equalResourceList compares two ResourceList
-func equalResourceList(a, b *corev1.ResourceList) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil || b == nil {
-		return false
-	}
-
-	aList := *a
-	bList := *b
-
-	if len(aList) != len(bList) {
-		return false
-	}
-
-	for resourceName, quantityA := range aList {
-		if quantityB, exists := bList[resourceName]; !exists || !quantityA.Equal(quantityB) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// equalVolcanoNetworkTopology compares two volcano NetworkTopologySpec pointers for equality
-func equalVolcanoNetworkTopology(a, b *schedulingv1beta1.NetworkTopologySpec) bool {
-	// If podGroup and subgroup network topology and modelServing network topology all are nil, they are equal
-	if a == nil && b == nil {
-		return true
-	}
-
-	// If one is nil and the other is not, they are not equal
-	if a == nil || b == nil {
-		return false
-	}
-
-	// Both are non-nil, compare their values
-	return a.Mode == b.Mode &&
-		a.HighestTierAllowed == b.HighestTierAllowed
-}
-
 func hasPodGroupChanged(current, updated *schedulingv1beta1.PodGroup) bool {
-	if current.Spec.MinMember != updated.Spec.MinMember {
-		return true
-	}
-	if !equalMinTaskMember(current.Spec.MinTaskMember, updated.Spec.MinTaskMember) {
-		return true
-	}
-	if !equalResourceList(current.Spec.MinResources, updated.Spec.MinResources) {
-		return true
-	}
-	if !equalVolcanoNetworkTopology(current.Spec.NetworkTopology, updated.Spec.NetworkTopology) {
-		return true
-	}
-	if hasSubGroupPolicyChanged(current.Spec.SubGroupPolicy, updated.Spec.SubGroupPolicy) {
-		return true
-	}
-	return false
-}
-
-func hasSubGroupPolicyChanged(a, b []schedulingv1beta1.SubGroupPolicySpec) bool {
-	if len(a) != len(b) {
-		return true
-	}
-	if len(a) == 0 {
-		return true
-	}
-	// Only need to compare the first element as only one SubGroupPolicy is set in our cased
-	ap, bp := a[0], b[0]
-	if len(ap.MatchPolicy) != len(bp.MatchPolicy) {
-		return true
-	}
-
-	for i := 0; i < len(ap.MatchPolicy); i++ {
-		if ap.MatchPolicy[i].LabelKey != bp.MatchPolicy[i].LabelKey {
-			return true
-		}
-	}
-	return !equalVolcanoNetworkTopology(ap.NetworkTopology, bp.NetworkTopology)
+	return current.Spec.MinMember != updated.Spec.MinMember ||
+		!reflect.DeepEqual(current.Spec.MinTaskMember, updated.Spec.MinTaskMember) ||
+		!reflect.DeepEqual(current.Spec.MinResources, updated.Spec.MinResources) ||
+		!reflect.DeepEqual(current.Spec.NetworkTopology, updated.Spec.NetworkTopology) ||
+		!reflect.DeepEqual(current.Spec.SubGroupPolicy, updated.Spec.SubGroupPolicy)
 }
 
 // neededHandlerPodGroupNameList returns the list of PodGroup names that need to be handled
