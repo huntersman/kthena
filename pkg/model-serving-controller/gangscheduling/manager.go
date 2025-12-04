@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -133,12 +134,13 @@ func (m *Manager) createPodGroup(ctx context.Context, mi *workloadv1alpha1.Model
 			OwnerReferences: m.buildOwnerReference(mi),
 		},
 		Spec: schedulingv1beta1.PodGroupSpec{
-			MinMember:       int32(minMember),
-			MinTaskMember:   minTaskMember,
-			MinResources:    &minResources,
-			NetworkTopology: mi.Spec.Template.NetworkTopology,
+			MinMember:     int32(minMember),
+			MinTaskMember: minTaskMember,
+			MinResources:  &minResources,
 		},
 	}
+
+	podGroup = appendNetworkTopologyPolicy(mi, podGroup)
 
 	_, err := m.volcanoClient.SchedulingV1beta1().PodGroups(mi.Namespace).Create(ctx, podGroup, metav1.CreateOptions{})
 	if err != nil && !apierrors.IsAlreadyExists(err) {
@@ -271,33 +273,15 @@ func (m *Manager) updatePodGroupIfNeeded(ctx context.Context, existing *scheduli
 	// Calculate current requirements
 	minMember, minTaskMember, minResources := m.calculateRequirements(mi, existing.GetName())
 
-	needsUpdate := false
 	updated := existing.DeepCopy()
+	updated.Spec.MinMember = int32(minMember)
+	updated.Spec.MinTaskMember = minTaskMember
+	updated.Spec.MinResources = &minResources
 
-	// Check if MinMember needs update
-	if updated.Spec.MinMember != int32(minMember) {
-		updated.Spec.MinMember = int32(minMember)
-		needsUpdate = true
-	}
+	// Apply network topology policy
+	updated = appendNetworkTopologyPolicy(mi, updated)
 
-	// Check if MinTaskMember needs update
-	if !equalMinTaskMember(updated.Spec.MinTaskMember, minTaskMember) {
-		updated.Spec.MinTaskMember = minTaskMember
-		needsUpdate = true
-	}
-
-	// Check if MinResources needs update
-	if !equalResourceList(updated.Spec.MinResources, &minResources) {
-		updated.Spec.MinResources = &minResources
-		needsUpdate = true
-	}
-
-	if !equalVolcanoNetworkTopology(updated.Spec.NetworkTopology, mi.Spec.Template.NetworkTopology) {
-		updated.Spec.NetworkTopology = mi.Spec.Template.NetworkTopology
-		needsUpdate = true
-	}
-
-	if needsUpdate {
+	if hasPodGroupChanged(existing, updated) {
 		_, err := m.volcanoClient.SchedulingV1beta1().PodGroups(mi.Namespace).Update(ctx, updated, metav1.UpdateOptions{})
 		if err != nil {
 			return err
@@ -375,61 +359,12 @@ func (m *Manager) AnnotatePodWithPodGroup(pod *corev1.Pod, mi *workloadv1alpha1.
 	pod.Annotations[batchv1alpha1.TaskSpecKey] = taskName
 }
 
-// equalMinTaskMember compares two MinTaskMember maps
-func equalMinTaskMember(a, b map[string]int32) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for key, valueA := range a {
-		if valueB, exists := b[key]; !exists || valueA != valueB {
-			return false
-		}
-	}
-
-	return true
-}
-
-// equalResourceList compares two ResourceList
-func equalResourceList(a, b *corev1.ResourceList) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil || b == nil {
-		return false
-	}
-
-	aList := *a
-	bList := *b
-
-	if len(aList) != len(bList) {
-		return false
-	}
-
-	for resourceName, quantityA := range aList {
-		if quantityB, exists := bList[resourceName]; !exists || !quantityA.Equal(quantityB) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// equalVolcanoNetworkTopology compares two volcano NetworkTopologySpec pointers for equality
-func equalVolcanoNetworkTopology(a, b *schedulingv1beta1.NetworkTopologySpec) bool {
-	// If both are nil, they are equal
-	if a == nil && b == nil {
-		return true
-	}
-
-	// If one is nil and the other is not, they are not equal
-	if a == nil || b == nil {
-		return false
-	}
-
-	// Both are non-nil, compare their values
-	return a.Mode == b.Mode &&
-		a.HighestTierAllowed == b.HighestTierAllowed
+func hasPodGroupChanged(current, updated *schedulingv1beta1.PodGroup) bool {
+	return current.Spec.MinMember != updated.Spec.MinMember ||
+		!reflect.DeepEqual(current.Spec.MinTaskMember, updated.Spec.MinTaskMember) ||
+		!reflect.DeepEqual(current.Spec.MinResources, updated.Spec.MinResources) ||
+		!reflect.DeepEqual(current.Spec.NetworkTopology, updated.Spec.NetworkTopology) ||
+		!reflect.DeepEqual(current.Spec.SubGroupPolicy, updated.Spec.SubGroupPolicy)
 }
 
 // neededHandlerPodGroupNameList returns the list of PodGroup names that need to be handled
@@ -474,4 +409,59 @@ func needHandledRoleNameList(expectedReplicas int, existRoleList []datastore.Rol
 		scaleUpRoleNameList = append(scaleUpRoleNameList, utils.GenerateRoleID(roleName, i))
 	}
 	return scaleUpRoleNameList
+}
+
+// equalSubGroupNetworkTopology compares two volcano SubGroupPolicySpec pointers for equality
+func equalSubGroupNetworkTopology(a []schedulingv1beta1.SubGroupPolicySpec, b *schedulingv1beta1.NetworkTopologySpec) bool {
+	if len(a) == 0 && b == nil {
+		return true
+	}
+
+	if len(a) == 0 || b == nil {
+		return false
+	}
+
+	if a[0].MatchPolicy == nil {
+		return false
+	}
+
+	if len(a[0].MatchPolicy) < 2 || a[0].MatchPolicy[0].LabelKey != workloadv1alpha1.RoleLabelKey ||
+		a[0].MatchPolicy[1].LabelKey != workloadv1alpha1.RoleIDKey {
+		return false
+	}
+
+	if a[0].NetworkTopology == nil {
+		return false
+	}
+	// The podGroup.SubGroupPolicy created by modelServing has a length of 1, so only the first element needs to be compared
+	return a[0].NetworkTopology.Mode == b.Mode &&
+		a[0].NetworkTopology.HighestTierAllowed == b.HighestTierAllowed
+}
+
+func appendNetworkTopologyPolicy(mi *workloadv1alpha1.ModelServing, podGroup *schedulingv1beta1.PodGroup) *schedulingv1beta1.PodGroup {
+	if mi.Spec.Template.NetworkTopology != nil {
+		// set NetworkTopology if configured in ModelServing
+		if mi.Spec.Template.NetworkTopology.GroupPolicy != nil {
+			podGroup.Spec.NetworkTopology = mi.Spec.Template.NetworkTopology.GroupPolicy
+		}
+
+		// set SubGroupPolicy if configured in ModelServing
+		if mi.Spec.Template.NetworkTopology.RolePolicy != nil {
+			podGroup.Spec.SubGroupPolicy = []schedulingv1beta1.SubGroupPolicySpec{
+				{
+					Name:            podGroup.GetName(),
+					NetworkTopology: mi.Spec.Template.NetworkTopology.RolePolicy,
+					MatchPolicy: []schedulingv1beta1.MatchPolicySpec{
+						{
+							LabelKey: workloadv1alpha1.RoleLabelKey,
+						},
+						{
+							LabelKey: workloadv1alpha1.RoleIDKey,
+						},
+					},
+				},
+			}
+		}
+	}
+	return podGroup
 }

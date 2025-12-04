@@ -598,186 +598,158 @@ func TestGetExistingPodGroups(t *testing.T) {
 	})
 }
 
-func TestEqualMinTaskMember(t *testing.T) {
-	t.Run("equal maps", func(t *testing.T) {
-		a := map[string]int32{
-			"task1": 1,
-			"task2": 2,
-			"task3": 3,
+func TestHasPodGroupChanged(t *testing.T) {
+	groupHighestTierAllowed := 3
+	subgroupHighestTierAllowed := 2
+	// Helper function to create basic PodGroup spec
+	basePodGroup := func() *schedulingv1beta1.PodGroup {
+		return &schedulingv1beta1.PodGroup{
+			Spec: schedulingv1beta1.PodGroupSpec{
+				MinMember:     2,
+				MinTaskMember: map[string]int32{"task1": 1, "task2": 1},
+				MinResources: &corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("2"),
+					corev1.ResourceMemory: resource.MustParse("4Gi"),
+				},
+				NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+					Mode:               "test-mode",
+					HighestTierAllowed: &groupHighestTierAllowed,
+				},
+				SubGroupPolicy: []schedulingv1beta1.SubGroupPolicySpec{
+					{
+						Name: "test-subgroup",
+						NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+							Mode:               "sub-test-mode",
+							HighestTierAllowed: &subgroupHighestTierAllowed,
+						},
+						MatchPolicy: []schedulingv1beta1.MatchPolicySpec{
+							{LabelKey: workloadv1alpha1.RoleLabelKey},
+							{LabelKey: workloadv1alpha1.RoleIDKey},
+						},
+					},
+				},
+			},
 		}
-		b := map[string]int32{
-			"task1": 1,
-			"task2": 2,
-			"task3": 3,
-		}
+	}
 
-		assert.True(t, equalMinTaskMember(a, b))
+	t.Run("NoChange", func(t *testing.T) {
+		current := basePodGroup()
+		updated := basePodGroup()
+
+		result := hasPodGroupChanged(current, updated)
+		assert.False(t, result, "Expected no change when objects are identical")
 	})
 
-	t.Run("unequal maps - different values", func(t *testing.T) {
-		a := map[string]int32{
-			"task1": 1,
-			"task2": 2,
-		}
-		b := map[string]int32{
-			"task1": 1,
-			"task2": 3, // Different value
-		}
+	t.Run("MinMemberChanged", func(t *testing.T) {
+		current := basePodGroup()
+		updated := basePodGroup()
+		updated.Spec.MinMember = 3
 
-		assert.False(t, equalMinTaskMember(a, b))
+		result := hasPodGroupChanged(current, updated)
+		assert.True(t, result, "Expected change when MinMember differs")
 	})
 
-	t.Run("unequal maps - different keys", func(t *testing.T) {
-		a := map[string]int32{
-			"task1": 1,
-			"task2": 2,
-		}
-		b := map[string]int32{
-			"task1": 1,
-			"task3": 2, // Different key
-		}
+	t.Run("MinTaskMemberChanged", func(t *testing.T) {
+		current := basePodGroup()
+		updated := basePodGroup()
+		updated.Spec.MinTaskMember["task1"] = 2
 
-		assert.False(t, equalMinTaskMember(a, b))
+		result := hasPodGroupChanged(current, updated)
+		assert.True(t, result, "Expected change when MinTaskMember differs")
 	})
 
-	t.Run("unequal maps - different lengths", func(t *testing.T) {
-		a := map[string]int32{
-			"task1": 1,
-			"task2": 2,
-		}
-		b := map[string]int32{
-			"task1": 1,
-			"task2": 2,
-			"task3": 3, // Extra key
-		}
+	t.Run("MinTaskMemberAdded", func(t *testing.T) {
+		current := basePodGroup()
+		updated := basePodGroup()
+		updated.Spec.MinTaskMember["task3"] = 1
 
-		assert.False(t, equalMinTaskMember(a, b))
+		result := hasPodGroupChanged(current, updated)
+		assert.True(t, result, "Expected change when MinTaskMember has additional entry")
 	})
 
-	t.Run("empty maps", func(t *testing.T) {
-		a := map[string]int32{}
-		b := map[string]int32{}
+	t.Run("MinResourcesChanged", func(t *testing.T) {
+		current := basePodGroup()
+		updated := basePodGroup()
+		(*updated.Spec.MinResources)[corev1.ResourceCPU] = resource.MustParse("3")
 
-		assert.True(t, equalMinTaskMember(a, b))
+		result := hasPodGroupChanged(current, updated)
+		assert.True(t, result, "Expected change when MinResources differs")
 	})
 
-	t.Run("one empty map", func(t *testing.T) {
-		a := map[string]int32{
-			"task1": 1,
-		}
-		b := map[string]int32{}
+	t.Run("NetworkTopologyNilVsNotNil", func(t *testing.T) {
+		current := basePodGroup()
+		updated := basePodGroup()
+		updated.Spec.NetworkTopology = nil
 
-		assert.False(t, equalMinTaskMember(a, b))
+		result := hasPodGroupChanged(current, updated)
+		assert.True(t, result, "Expected change when NetworkTopology changes from nil to not nil")
 	})
 
-	t.Run("both nil maps", func(t *testing.T) {
-		var a map[string]int32 = nil
-		var b map[string]int32 = nil
+	t.Run("NetworkTopologyFieldChanged", func(t *testing.T) {
+		current := basePodGroup()
+		updated := basePodGroup()
+		updated.Spec.NetworkTopology.Mode = "different-mode"
 
-		assert.True(t, equalMinTaskMember(a, b))
+		result := hasPodGroupChanged(current, updated)
+		assert.True(t, result, "Expected change when NetworkTopology field differs")
 	})
 
-	t.Run("one nil map", func(t *testing.T) {
-		var a map[string]int32 = nil
-		b := map[string]int32{
-			"task1": 1,
-		}
+	t.Run("SubGroupPolicyLengthDiffers", func(t *testing.T) {
+		current := basePodGroup()
+		updated := basePodGroup()
+		updated.Spec.SubGroupPolicy = append(updated.Spec.SubGroupPolicy, schedulingv1beta1.SubGroupPolicySpec{})
 
-		assert.False(t, equalMinTaskMember(a, b))
-	})
-}
-
-func TestEqualResourceList(t *testing.T) {
-	t.Run("equal resource lists", func(t *testing.T) {
-		a := &corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("1"),
-			corev1.ResourceMemory: resource.MustParse("2Gi"),
-		}
-		b := &corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("1"),
-			corev1.ResourceMemory: resource.MustParse("2Gi"),
-		}
-
-		assert.True(t, equalResourceList(a, b))
+		result := hasPodGroupChanged(current, updated)
+		assert.True(t, result, "Expected change when SubGroupPolicy length differs")
 	})
 
-	t.Run("unequal resource lists - different values", func(t *testing.T) {
-		a := &corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("1"),
-			corev1.ResourceMemory: resource.MustParse("2Gi"),
-		}
-		b := &corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("2"), // Different CPU
-			corev1.ResourceMemory: resource.MustParse("2Gi"),
-		}
+	t.Run("SubGroupPolicyContentChanged", func(t *testing.T) {
+		current := basePodGroup()
+		updated := basePodGroup()
+		updated.Spec.SubGroupPolicy[0].Name = "different-name"
 
-		assert.False(t, equalResourceList(a, b))
+		result := hasPodGroupChanged(current, updated)
+		assert.True(t, result, "Expected change when SubGroupPolicy content differs")
 	})
 
-	t.Run("unequal resource lists - different keys", func(t *testing.T) {
-		a := &corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("1"),
-			corev1.ResourceMemory: resource.MustParse("2Gi"),
+	t.Run("AllFieldsNil", func(t *testing.T) {
+		current := &schedulingv1beta1.PodGroup{
+			Spec: schedulingv1beta1.PodGroupSpec{
+				MinMember:       0,
+				MinTaskMember:   nil,
+				MinResources:    nil,
+				NetworkTopology: nil,
+				SubGroupPolicy:  nil,
+			},
 		}
-		b := &corev1.ResourceList{
-			corev1.ResourceCPU:              resource.MustParse("1"),
-			corev1.ResourceEphemeralStorage: resource.MustParse("2Gi"), // Different resource type
-		}
-
-		assert.False(t, equalResourceList(a, b))
-	})
-
-	t.Run("unequal resource lists - different lengths", func(t *testing.T) {
-		a := &corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("1"),
-			corev1.ResourceMemory: resource.MustParse("2Gi"),
-		}
-		b := &corev1.ResourceList{
-			corev1.ResourceCPU:              resource.MustParse("1"),
-			corev1.ResourceMemory:           resource.MustParse("2Gi"),
-			corev1.ResourceEphemeralStorage: resource.MustParse("10Gi"), // Extra resource
+		updated := &schedulingv1beta1.PodGroup{
+			Spec: schedulingv1beta1.PodGroupSpec{
+				MinMember:       0,
+				MinTaskMember:   nil,
+				MinResources:    nil,
+				NetworkTopology: nil,
+				SubGroupPolicy:  nil,
+			},
 		}
 
-		assert.False(t, equalResourceList(a, b))
+		result := hasPodGroupChanged(current, updated)
+		assert.False(t, result, "Expected no change when all fields are nil/empty")
 	})
 
-	t.Run("empty resource lists", func(t *testing.T) {
-		a := &corev1.ResourceList{}
-		b := &corev1.ResourceList{}
-
-		assert.True(t, equalResourceList(a, b))
-	})
-
-	t.Run("one empty resource list", func(t *testing.T) {
-		a := &corev1.ResourceList{
-			corev1.ResourceCPU: resource.MustParse("1"),
+	t.Run("EmptyVsNilMinTaskMember", func(t *testing.T) {
+		current := &schedulingv1beta1.PodGroup{
+			Spec: schedulingv1beta1.PodGroupSpec{
+				MinTaskMember: map[string]int32{},
+			},
 		}
-		b := &corev1.ResourceList{}
-
-		assert.False(t, equalResourceList(a, b))
-	})
-
-	t.Run("both nil resource lists", func(t *testing.T) {
-		var a *corev1.ResourceList = nil
-		var b *corev1.ResourceList = nil
-
-		assert.True(t, equalResourceList(a, b))
-	})
-
-	t.Run("one nil resource list", func(t *testing.T) {
-		var a *corev1.ResourceList = nil
-		b := &corev1.ResourceList{
-			corev1.ResourceCPU: resource.MustParse("1"),
+		updated := &schedulingv1beta1.PodGroup{
+			Spec: schedulingv1beta1.PodGroupSpec{
+				MinTaskMember: nil,
+			},
 		}
 
-		assert.False(t, equalResourceList(a, b))
-	})
-
-	t.Run("one nil, one empty resource list", func(t *testing.T) {
-		var a *corev1.ResourceList = nil
-		b := &corev1.ResourceList{}
-
-		assert.False(t, equalResourceList(a, b))
+		result := hasPodGroupChanged(current, updated)
+		assert.True(t, result, "Expected change when MinTaskMember changes from empty map to nil")
 	})
 }
 
@@ -956,4 +928,121 @@ func TestNeededHandledPodGroupNameList(t *testing.T) {
 			assert.Equal(t, tt.expectedResult, result)
 		})
 	}
+}
+
+func TestEqualSubGroupNetworkTopology(t *testing.T) {
+	// test case 1: both parameters are nil or empty
+	t.Run("both nil or empty", func(t *testing.T) {
+		assert.True(t, equalSubGroupNetworkTopology(nil, nil))
+		assert.True(t, equalSubGroupNetworkTopology([]schedulingv1beta1.SubGroupPolicySpec{}, nil))
+	})
+
+	// test case 2: one parameter is nil or empty, the other is not
+	t.Run("one nil or empty, other not", func(t *testing.T) {
+		highestTierAllowed := 1
+		subGroupPolicy := &schedulingv1beta1.NetworkTopologySpec{
+			Mode:               "hard",
+			HighestTierAllowed: &highestTierAllowed,
+		}
+		assert.False(t, equalSubGroupNetworkTopology(nil, subGroupPolicy))
+		assert.False(t, equalSubGroupNetworkTopology([]schedulingv1beta1.SubGroupPolicySpec{}, subGroupPolicy))
+	})
+
+	// test case 3: MatchPolicy is nil
+	t.Run("match policy is nil", func(t *testing.T) {
+		highestTierAllowed := 1
+		subGroupPolicy := []schedulingv1beta1.SubGroupPolicySpec{
+			{
+				NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+					Mode:               "hard",
+					HighestTierAllowed: &highestTierAllowed,
+				},
+				MatchPolicy: nil,
+			},
+		}
+		networkTopology := &schedulingv1beta1.NetworkTopologySpec{
+			Mode:               "hard",
+			HighestTierAllowed: &highestTierAllowed,
+		}
+		assert.False(t, equalSubGroupNetworkTopology(subGroupPolicy, networkTopology))
+	})
+
+	// test case 4: MatchPolicy labels mismatch
+	t.Run("match policy labels mismatch", func(t *testing.T) {
+		highestTierAllowed := 1
+		subGroupPolicy := []schedulingv1beta1.SubGroupPolicySpec{
+			{
+				NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+					Mode:               "hard",
+					HighestTierAllowed: &highestTierAllowed,
+				},
+				MatchPolicy: []schedulingv1beta1.MatchPolicySpec{
+					{
+						LabelKey: "wrong-label-key-1",
+					},
+					{
+						LabelKey: "wrong-label-key-2",
+					},
+				},
+			},
+		}
+		networkTopology := &schedulingv1beta1.NetworkTopologySpec{
+			Mode:               "hard",
+			HighestTierAllowed: &highestTierAllowed,
+		}
+		assert.False(t, equalSubGroupNetworkTopology(subGroupPolicy, networkTopology))
+	})
+
+	// test case 5: NetworkTopology mismatch
+	t.Run("network topology mismatch", func(t *testing.T) {
+		highestTierAllowed1 := 1
+		highestTierAllowed2 := 2
+		subGroupPolicy := []schedulingv1beta1.SubGroupPolicySpec{
+			{
+				NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+					Mode:               "soft",
+					HighestTierAllowed: &highestTierAllowed2,
+				},
+				MatchPolicy: []schedulingv1beta1.MatchPolicySpec{
+					{
+						LabelKey: workloadv1alpha1.RoleLabelKey,
+					},
+					{
+						LabelKey: workloadv1alpha1.RoleIDKey,
+					},
+				},
+			},
+		}
+		networkTopology := &schedulingv1beta1.NetworkTopologySpec{
+			Mode:               "hard",
+			HighestTierAllowed: &highestTierAllowed1,
+		}
+		assert.False(t, equalSubGroupNetworkTopology(subGroupPolicy, networkTopology))
+	})
+
+	// test case 6: complete match
+	t.Run("complete match", func(t *testing.T) {
+		highestTierAllowed := 1
+		subGroupPolicy := []schedulingv1beta1.SubGroupPolicySpec{
+			{
+				NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+					Mode:               "hard",
+					HighestTierAllowed: &highestTierAllowed,
+				},
+				MatchPolicy: []schedulingv1beta1.MatchPolicySpec{
+					{
+						LabelKey: workloadv1alpha1.RoleLabelKey,
+					},
+					{
+						LabelKey: workloadv1alpha1.RoleIDKey,
+					},
+				},
+			},
+		}
+		networkTopology := &schedulingv1beta1.NetworkTopologySpec{
+			Mode:               "hard",
+			HighestTierAllowed: &highestTierAllowed,
+		}
+		assert.True(t, equalSubGroupNetworkTopology(subGroupPolicy, networkTopology))
+	})
 }
