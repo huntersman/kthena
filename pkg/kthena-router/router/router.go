@@ -265,34 +265,34 @@ func (r *Router) doLoadbalance(c *gin.Context, modelRequest ModelRequest) {
 
 	if inferencePoolName, exists := c.Get("inferencePoolName"); exists {
 		// This is an InferencePool request via HTTPRoute
-		ipName := inferencePoolName.(types.NamespacedName)
+		inferencePoolNameTyped := inferencePoolName.(types.NamespacedName)
 
 		// Get InferencePool from store
-		ipKey := fmt.Sprintf("%s/%s", ipName.Namespace, ipName.Name)
-		ip := r.store.GetInferencePool(ipKey)
-		if ip == nil {
+		inferencePoolKey := fmt.Sprintf("%s/%s", inferencePoolNameTyped.Namespace, inferencePoolNameTyped.Name)
+		inferencePool := r.store.GetInferencePool(inferencePoolKey)
+		if inferencePool == nil {
 			accesslog.SetError(c, "inferencepool_not_found", "InferencePool not found")
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"message": "InferencePool not found"})
 			return
 		}
 
 		// Get target port from InferencePool
-		if len(ip.Spec.TargetPorts) == 0 {
+		if len(inferencePool.Spec.TargetPorts) == 0 {
 			accesslog.SetError(c, "inferencepool_no_port", "No target port configured")
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "No target port configured"})
 			return
 		}
-		if ip.Spec.TargetPorts[0].Number == 0 {
+		if inferencePool.Spec.TargetPorts[0].Number == 0 {
 			accesslog.SetError(c, "inferencepool_invalid_port", "Invalid target port number")
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "Invalid target port number"})
 			return
 		}
 
-		port = int32(ip.Spec.TargetPorts[0].Number)
+		port = int32(inferencePool.Spec.TargetPorts[0].Number)
 
 		// Get pods from InferencePool
 		var err error
-		pods, err = r.store.GetPodsByInferencePool(ipName)
+		pods, err = r.store.GetPodsByInferencePool(inferencePoolNameTyped)
 		if err != nil || len(pods) == 0 {
 			accesslog.SetError(c, "pod_discovery", "No pods available for InferencePool")
 			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"message": "No pods available"})
@@ -300,10 +300,10 @@ func (r *Router) doLoadbalance(c *gin.Context, modelRequest ModelRequest) {
 		}
 
 		// Use InferencePool name as the "model server" for tracking
-		modelServerName = ipName
+		modelServerName = inferencePoolNameTyped
 		modelRoute = nil
 
-		klog.V(4).Infof("Using InferencePool: %v, port: %d, pods: %d", ipName, port, len(pods))
+		klog.V(4).Infof("Using InferencePool: %v, port: %d, pods: %d", inferencePoolNameTyped, port, len(pods))
 	} else {
 		// Regular ModelServer request
 		// step 3: Find pods and model server details

@@ -377,22 +377,26 @@ func (lm *ListenerManager) createPortHandler(port int32) gin.HandlerFunc {
 			return
 		}
 
-		// Handle via HTTPRoute
-		if lm.server.EnableGatewayAPIInferenceExtension {
-			lm.handleHTTPRoute(listenerConfig.GatewayKey)(c)
-			return
-		} else {
-			// Handle /v1/*path
-			if strings.HasPrefix(c.Request.URL.Path, "/v1/") {
+		// Try to handle with ModelRoute first (for /v1/* paths)
+		if strings.HasPrefix(c.Request.URL.Path, "/v1/") {
+			modelRoutes := lm.store.GetModelRoutesByGateway(listenerConfig.GatewayKey)
+			if len(modelRoutes) > 0 {
 				lm.router.HandlerFunc()(c)
 				return
 			}
-
-			// Return 404 for all other paths
-			c.JSON(http.StatusNotFound, gin.H{
-				"message": "Not found",
-			})
 		}
+
+		// Try to handle with HTTPRoute
+		httpRoutes := lm.store.GetHTTPRoutesByGateway(listenerConfig.GatewayKey)
+		if len(httpRoutes) > 0 {
+			lm.handleHTTPRoute(listenerConfig.GatewayKey)(c)
+			return
+		}
+
+		// Return 404 if neither ModelRoute nor HTTPRoute matched
+		c.JSON(http.StatusNotFound, gin.H{
+			"message": "Not found",
+		})
 	}
 }
 

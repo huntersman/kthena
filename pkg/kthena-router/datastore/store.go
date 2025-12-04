@@ -199,6 +199,7 @@ type Store interface {
 	GetHTTPRoute(key string) *gatewayv1.HTTPRoute
 	GetAllHTTPRoutes() []*gatewayv1.HTTPRoute
 	GetHTTPRoutesByGateway(gatewayKey string) []*gatewayv1.HTTPRoute
+	GetModelRoutesByGateway(gatewayKey string) []*aiv1alpha1.ModelRoute
 
 	// Debug interface methods
 	GetAllModelRoutes() map[string]*aiv1alpha1.ModelRoute
@@ -250,9 +251,10 @@ type store struct {
 
 	routeMutex sync.RWMutex
 	// Model routing fields
-	routeInfo  map[string]*modelRouteInfo
-	routes     map[string][]*aiv1alpha1.ModelRoute // key: model name, value: list of ModelRoutes
-	loraRoutes map[string][]*aiv1alpha1.ModelRoute // key: lora name, value: list of ModelRoutes
+	routeInfo          map[string]*modelRouteInfo
+	routes             map[string][]*aiv1alpha1.ModelRoute // key: model name, value: list of ModelRoutes
+	loraRoutes         map[string][]*aiv1alpha1.ModelRoute // key: lora name, value: list of ModelRoutes
+	gatewayModelRoutes map[string]sets.Set[string]         // key: gateway key (namespace/name), value: set of ModelRoute keys
 
 	// Gateway fields (using standard Gateway API)
 	gatewayMutex sync.RWMutex
@@ -283,6 +285,7 @@ func New() Store {
 		routeInfo:           make(map[string]*modelRouteInfo),
 		routes:              make(map[string][]*aiv1alpha1.ModelRoute),
 		loraRoutes:          make(map[string][]*aiv1alpha1.ModelRoute),
+		gatewayModelRoutes:  make(map[string]sets.Set[string]),
 		gateways:            make(map[string]*gatewayv1.Gateway),
 		inferencePools:      make(map[string]*inferencev1.InferencePool),
 		httpRoutes:          make(map[string]*gatewayv1.HTTPRoute),
@@ -618,6 +621,24 @@ func (s *store) AddOrUpdateModelRoute(mr *aiv1alpha1.ModelRoute) error {
 			s.loraRoutes[lora] = append(loraRoutes, mr)
 		}
 	}
+
+	// Update gateway model routes mapping
+	for _, parentRef := range mr.Spec.ParentRefs {
+		if parentRef.Kind != nil && *parentRef.Kind == "Gateway" {
+			gatewayName := string(parentRef.Name)
+			gatewayNamespace := mr.Namespace
+			if parentRef.Namespace != nil {
+				gatewayNamespace = string(*parentRef.Namespace)
+			}
+			gatewayKey := fmt.Sprintf("%s/%s", gatewayNamespace, gatewayName)
+
+			if s.gatewayModelRoutes[gatewayKey] == nil {
+				s.gatewayModelRoutes[gatewayKey] = sets.New[string]()
+			}
+			s.gatewayModelRoutes[gatewayKey].Insert(key)
+		}
+	}
+
 	s.routeMutex.Unlock()
 
 	s.triggerCallbacks("ModelRoute", EventData{
@@ -632,6 +653,7 @@ func (s *store) DeleteModelRoute(namespacedName string) error {
 	s.routeMutex.Lock()
 	info := s.routeInfo[namespacedName]
 	var modelName string
+	var deletedRoute *aiv1alpha1.ModelRoute
 	if info != nil {
 		modelName = info.model
 		// Remove from routes map
@@ -642,6 +664,8 @@ func (s *store) DeleteModelRoute(namespacedName string) error {
 				routeKey := route.Namespace + "/" + route.Name
 				if routeKey != namespacedName {
 					newRoutes = append(newRoutes, route)
+				} else {
+					deletedRoute = route
 				}
 			}
 			if len(newRoutes) == 0 {
@@ -658,6 +682,8 @@ func (s *store) DeleteModelRoute(namespacedName string) error {
 				routeKey := route.Namespace + "/" + route.Name
 				if routeKey != namespacedName {
 					newLoraRoutes = append(newLoraRoutes, route)
+				} else if deletedRoute == nil {
+					deletedRoute = route
 				}
 			}
 			if len(newLoraRoutes) == 0 {
@@ -667,6 +693,28 @@ func (s *store) DeleteModelRoute(namespacedName string) error {
 			}
 		}
 	}
+
+	// Remove from gateway model routes mapping
+	if deletedRoute != nil {
+		for _, parentRef := range deletedRoute.Spec.ParentRefs {
+			if parentRef.Kind != nil && *parentRef.Kind == "Gateway" {
+				gatewayName := string(parentRef.Name)
+				gatewayNamespace := deletedRoute.Namespace
+				if parentRef.Namespace != nil {
+					gatewayNamespace = string(*parentRef.Namespace)
+				}
+				gatewayKey := fmt.Sprintf("%s/%s", gatewayNamespace, gatewayName)
+
+				if routeSet, exists := s.gatewayModelRoutes[gatewayKey]; exists {
+					routeSet.Delete(namespacedName)
+					if routeSet.IsEmpty() {
+						delete(s.gatewayModelRoutes, gatewayKey)
+					}
+				}
+			}
+		}
+	}
+
 	delete(s.routeInfo, namespacedName)
 	s.routeMutex.Unlock()
 	if modelName != "" {
@@ -1477,6 +1525,32 @@ func (s *store) GetHTTPRoutesByGateway(gatewayKey string) []*gatewayv1.HTTPRoute
 		for routeKey := range routeSet {
 			if hr, ok := s.httpRoutes[routeKey]; ok {
 				result = append(result, hr)
+			}
+		}
+	}
+	return result
+}
+
+func (s *store) GetModelRoutesByGateway(gatewayKey string) []*aiv1alpha1.ModelRoute {
+	s.routeMutex.RLock()
+	defer s.routeMutex.RUnlock()
+
+	var result []*aiv1alpha1.ModelRoute
+	if routeSet, exists := s.gatewayModelRoutes[gatewayKey]; exists {
+		for routeKey := range routeSet {
+			// Find the ModelRoute in routes or loraRoutes
+			if info, ok := s.routeInfo[routeKey]; ok {
+				// Try to find from primary model routes
+				if info.model != "" {
+					if routes, exists := s.routes[info.model]; exists {
+						for _, route := range routes {
+							if route.Namespace+"/"+route.Name == routeKey {
+								result = append(result, route)
+								break
+							}
+						}
+					}
+				}
 			}
 		}
 	}
