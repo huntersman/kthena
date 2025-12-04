@@ -1,28 +1,197 @@
 # Multi-Node Inference
 
-This page describes the multi-node inference capabilities in Kthena, base on real-world examples and configurations.
+This page describes the multi-node inference capabilities in Kthena, based on real-world examples and configurations.
 
 ## Overview
 
 With the development of LLM, the scale of model parameters has grown exponentially, and the resource limits of a single conventional virtual machine or physical server can no longer meet the computational demands of these LLM.
 
-The industry has proposed various innovative optimization strategies, such as PD-disaggregation and hybrid deployment of large and small models. These strategies have significantly changed the execution pattern of inference tasks, making inference instances no longer limited to the level of a single pod, but rather evolving into scenarios where multiple pods collaboratively complete a single inference prediction.
+The industry has proposed various innovative optimization strategies, such as PD‑disaggregation and hybrid deployment of large and small models. These strategies have significantly changed the execution pattern of inference tasks: inference instances are no longer limited to a single pod, but instead involve multiple pods collaborating to complete a single inference prediction.
 
-To address this issue, kthena provides a new `ModelServing` CR to describe specific inference deployment, enabling flexible and diverse deployment methods for inference task pods.
+To address this issue, Kthena provides a new `ModelServing` CR to describe specific inference deployment, enabling flexible and diverse deployment methods for inference task pods.
 
 For a detailed definition of the `ModelServing`, please refer to the [ModelServing Reference](../reference/crd/workload.serving.volcano.sh.md) pages.
+
+## Concepts
+
+Kthena's multi‑node inference is built around three core abstractions:
+
+- **ServingGroup** – A group of replicas that together serve a model. Each ServingGroup is a logical unit of scaling and rolling updates. A ModelServing can have multiple ServingGroups (controlled by `spec.replicas`).
+
+- **Role** – Within a ServingGroup, pods are organized into Roles. Each Role represents a distinct functional component (e.g., entry‑point, worker, decoder). Roles can have different container images, resource requirements, and replica counts. The `spec.template.roles` field defines the Roles.
+
+- **Pod** – The actual Kubernetes pod that runs the inference workload. Pods belong to a specific Role within a specific ServingGroup.
+
+### Pod‑Naming Pattern
+
+Pods are named using the following pattern:
+
+```
+{modelServing-name}-{servingGroup-index}-{role-hash}-{role-index}-{pod-index}
+```
+
+| Component | Description | Example |
+|-----------|-------------|---------|
+| `modelServing‑name` | Name of the ModelServing CR | `llama‑multinode` |
+| `servingGroup‑index` | Zero‑based index of the ServingGroup | `0`, `1` |
+| `role‑hash` | Short hash derived from the Role configuration | `405b` |
+| `role‑index` | Zero‑based index of the Role within the ServingGroup | `0`, `1` |
+| `pod‑index` | Zero‑based index of the Pod within the Role | `0`, `1` |
+
+For instance, the pod `llama‑multinode‑0‑405b‑1‑0` belongs to:
+- ModelServing `llama‑multinode`
+- ServingGroup `0`
+- Role with hash `405b`
+- Role index `1` (the second Role)
+- Pod index `0` (the first pod of that Role)
+
+This naming convention makes it easy to identify a pod's position in the multi‑node hierarchy.
+
+### Hierarchy Visualization
+
+The following diagram illustrates the relationship between ModelServing, ServingGroups, Roles, and Pods:
+
+```mermaid
+%%{init: {'themeVariables': { 'fontSize': '28px'}}}%%
+
+graph TD
+    MS[ModelServing] --> SG1[ServingGroup 0]
+    MS --> SG2[ServingGroup 1]
+    
+    SG1 --> R1[Role 405b]
+    SG1 --> R2[Role ...]
+    
+    R1 --> P1[Pod 0-405b-0-0]
+    R1 --> P2[Pod 0-405b-0-1]
+    R2 --> P3[Pod 0-405b-1-0]
+    R2 --> P4[Pod 0-405b-1-1]
+    
+    SG2 --> R3[Role 405b]
+    SG2 --> R4[Role ...]
+    
+    R3 --> P5[Pod 1-405b-0-0]
+    R3 --> P6[Pod 1-405b-0-1]
+    R4 --> P7[Pod 1-405b-1-0]
+    R4 --> P8[Pod 1-405b-1-1]
+```
+
+- **ModelServing** is the top‑level custom resource.
+- Each **ServingGroup** is a replica of the entire serving topology.
+- Within a ServingGroup, multiple **Roles** represent different functional components.
+- Each **Role** contains one or more **Pods** (the actual Kubernetes workloads).
 
 ## Preparation
 
 ### Prerequisites
 
-- Kubernetes cluster with Kthena installed and [volcano](https://volcano.sh/en/docs/installation/) installed
+- Kubernetes cluster with Kthena and [Volcano](https://volcano.sh/en/docs/installation/) installed
 - Access to the Kthena examples repository
 - Basic understanding of ModelServing CRD
 
 ### Getting Started
 
-Deploy [llama LLM inference engine](../assets/examples/model-serving/multi-node.yaml). Set the tensor parallel size is 8 and the pipeline parallel size is 2.
+Deploy the Llama LLM inference engine as shown below. The tensor parallel size is 8 and the pipeline parallel size is 2.
+
+```yaml showLineNumbers
+apiVersion: workload.serving.volcano.sh/v1alpha1
+kind: ModelServing
+metadata:
+  name: llama-multinode
+  namespace: default
+spec:
+  schedulerName: volcano
+  replicas: 1  # inferGroup replicas
+  template:
+    restartGracePeriodSeconds: 60
+    gangPolicy:
+      minRoleReplicas:
+        405b: 1
+    roles:
+      - name: 405b
+        replicas: 2
+        entryTemplate:
+          spec:
+            containers:
+              - name: leader
+                image: vllm/vllm-openai:latest
+                env:
+                  - name: HUGGING_FACE_HUB_TOKEN
+                    value: $HUGGING_FACE_HUB_TOKEN
+                command:
+                  - sh
+                  - -c
+                  - "bash /vllm-workspace/examples/online_serving/multi-node-serving.sh leader --ray_cluster_size=2; 
+                    python3 -m vllm.entrypoints.openai.api_server --port 8080 --model meta-llama/Llama-3.1-405B-Instruct --tensor-parallel-size 8 --pipeline_parallel_size 2"
+                resources:
+                  limits:
+                    nvidia.com/gpu: "8"
+                    memory: 1124Gi
+                    ephemeral-storage: 800Gi
+                  requests:
+                    ephemeral-storage: 800Gi
+                    cpu: 125
+                ports:
+                  - containerPort: 8080
+                readinessProbe:
+                  tcpSocket:
+                    port: 8080
+                  initialDelaySeconds: 15
+                  periodSeconds: 10
+                volumeMounts:
+                  - mountPath: /dev/shm
+                    name: dshm
+            volumes:
+            - name: dshm
+              emptyDir:
+                medium: Memory
+                sizeLimit: 15Gi
+        workerReplicas: 1
+        workerTemplate:
+          spec:
+            containers:
+              - name: worker
+                image: vllm/vllm-openai:latest
+                command:
+                  - sh
+                  - -c
+                  - "bash /vllm-workspace/examples/online_serving/multi-node-serving.sh worker --ray_address=$(ENTRY_ADDRESS)"
+                resources:
+                  limits:
+                    nvidia.com/gpu: "8"
+                    memory: 1124Gi
+                    ephemeral-storage: 800Gi
+                  requests:
+                    ephemeral-storage: 800Gi
+                    cpu: 125
+                env:
+                  - name: HUGGING_FACE_HUB_TOKEN
+                    value: $HUGGING_FACE_HUB_TOKEN
+                volumeMounts:
+                  - mountPath: /dev/shm
+                    name: dshm   
+            volumes:
+            - name: dshm
+              emptyDir:
+                medium: Memory
+                sizeLimit: 15Gi
+```
+
+### Tensor and Pipeline Parallelism Configuration
+
+The multi‑node example configures tensor parallelism and pipeline parallelism through the command‑line arguments of the inference engine. In the `multi‑node.yaml` manifest, the entry‑point container includes:
+
+```yaml
+command:
+  - sh
+  - -c
+  - "bash /vllm-workspace/examples/online_serving/multi-node-serving.sh leader --ray_cluster_size=2;
+    python3 -m vllm.entrypoints.openai.api_server --port 8080 --model meta-llama/Llama-3.1-405B-Instruct --tensor-parallel-size 8 --pipeline_parallel_size 2"
+```
+
+- `--tensor-parallel-size 8`: Splits the model across 8 GPUs within each pod.
+- `--pipeline_parallel_size 2`: Splits the model across 2 pipeline stages (requires multiple pods).
+
+The Role `405b` has `replicas: 2`, which creates two pods per ServingGroup. Together with the parallelism settings, this enables distributed inference across multiple nodes.
 
 You can run the following command to check the ModelServing status and pod status in the cluster.
 
@@ -38,10 +207,10 @@ status:
     status: "True"
     type: Available
   - lastTransitionTime: "2025-09-05T08:53:23Z"
-    message: 'Some groups is progressing: [0]'
+    message: 'Some groups are progressing: [0]'
     reason: GroupProgressing
     status: "False"
-    type: Progerssing
+    type: Progressing
   currentReplicas: 1
   observedGeneration: 4
   replicas: 1
@@ -60,32 +229,20 @@ default     llama-multinode-0-405b-1-1    1/1     Running   0          15m     1
 
 ## Scaling
 
-ModelServing supports scale strategies at two levels: `ServingGroup` and `Role`.
+ModelServing supports scaling at two distinct levels: **ServingGroup** and **Role**. This allows fine‑grained control over the number of replicas for different parts of the inference workload.
 
-You can modify `modelServing.Spec.Replicas` to trigger scaling at the group level.
-Additionally, modifying `modelServing.Spec.Template.Role.Replicas` triggers role-level scaling.
+| Level | Field | Effect |
+|-------|-------|--------|
+| ServingGroup | `spec.replicas` | Changes the number of ServingGroups (horizontal scaling). Each ServingGroup contains a full set of Roles. |
+| Role | `spec.template.roles[*].replicas` | Changes the number of pods within a specific Role, inside every ServingGroup. |
 
-### Role Level Scale Down
+### ServingGroup‑level scaling
 
-Reduce the `modelServing.Spec.Template.Role.Replicas` from 2 to 1. To trigger a `Role Level` scale down.
+ServingGroup‑level scaling adds or removes entire ServingGroups. This is useful when you need to increase the overall capacity of the model while preserving the same internal Role structure.
 
-You can see the result:
+**Example: Scale up from 1 to 2 ServingGroups**
 
-```sh
-kubectl get pod -l modelserving.volcano.sh/name=llama-multinode
-
-NAMESPACE            NAME                                          READY   STATUS    RESTARTS   AGE
-default              llama-multinode-0-405b-0-0                    1/1     Running   0          28m
-default              llama-multinode-0-405b-0-1                    1/1     Running   0          28m
-```
-
-You can see that all pods in `Role1` have been deleted.
-
-### ServingGroup Level Scale Up
-
-Add the `modelServing.Spec.Replicas` from 1 to 2. To trigger a `ServingGroup Level` scale up.
-
-You can see the result:
+Increase `spec.replicas` from 1 to 2:
 
 ```sh
 kubectl get pod -l modelserving.volcano.sh/name=llama-multinode
@@ -97,9 +254,29 @@ default              llama-multinode-1-405b-0-0                    1/1     Runni
 default              llama-multinode-1-405b-0-1                    1/1     Running   0          2m
 ```
 
-You can see that all roles in `ServingGroup1` are created.
+After scaling, you can see that a new ServingGroup (index `1`) has been created, containing all Roles defined in the template.
 
-You can also scale both the `ServingGroup` and `Role Level`.
+### Role‑level scaling
+
+Role‑level scaling changes the number of pods inside a particular Role, affecting every ServingGroup. This is useful when you need to adjust the parallelism of a specific component (e.g., add more workers).
+
+**Example: Scale down a Role from 2 to 1 replica**
+
+Reduce `spec.template.roles[0].replicas` from 2 to 1:
+
+```sh
+kubectl get pod -l modelserving.volcano.sh/name=llama-multinode
+
+NAMESPACE            NAME                                          READY   STATUS    RESTARTS   AGE
+default              llama-multinode-0-405b-0-0                    1/1     Running   0          28m
+default              llama-multinode-0-405b-0-1                    1/1     Running   0          28m
+```
+
+After scaling, the second pod of each Role (index `1`) is removed, while the first pod remains.
+
+### Combined scaling
+
+You can adjust both levels simultaneously. For instance, you can increase the number of ServingGroups while also changing the replica count of a Role. The scaling operations are independent and can be applied in any order.
 
 ## Rolling Update
 
@@ -132,41 +309,80 @@ llama-multinode-1-405b-0-0        vllm/vllm-openai:v0.10.1
 llama-multinode-1-405b-0-1        vllm/vllm-openai:v0.10.1                 
 ```
 
-From the pod runtime, it can be seen that only group 1 has been updated. Because we have set rolloutStrategy.partition = 1.
+From the pod runtime, we can see that only group 1 has been updated because we set `rolloutStrategy.partition = 1`.
 
 ## Gang Scheduling and Network Topology
 
 Gang scheduling is a feature that allows pods to be scheduled together. This is useful when you have a set of pods that need to be scheduled together. For example, you may have a set of pods that need to be scheduled together because they are pods of the same model.
 
-In kthena, we use [Volcano gang scheduling](https://volcano.sh/en/docs/v1-10-0/plugins/#gang) to ensure that required pods are scheduled concurrently.
+In Kthena, we use [Volcano gang scheduling](https://volcano.sh/en/docs/v1-10-0/plugins/#gang) to ensure that required pods are scheduled concurrently. If you haven't installed Volcano yet, follow the [installation guide](https://volcano.sh/en/docs/installation/).
 
-Use the following command to install Volcano:
-
-```sh
-helm repo add volcano-sh https://volcano-sh.github.io/helm-charts
-
-helm repo update
-
-helm install volcano volcano-sh/volcano -n volcano-system --create-namespace
-```
-
-We will create podGroups based on modelServing. Among these, the important one is `MinRoleReplicas`. Defines the minimum number of replicas required for each role in gang scheduling. This map allows users to specify different minimum replica requirements for different roles.
+Kthena creates PodGroups based on the ModelServing. Among these, the important field is `MinRoleReplicas`, which defines the minimum number of replicas required for each role in gang scheduling. This map allows users to specify different minimum replica requirements for different roles.
 
 - **Key:** role name
 - **Value:** minimum number of replicas required for that role
 
-Additionally, it supports using `network topology` to reduce network latency among pods within the same podGroup.
+### MinRoleReplicas and PodGroup Mapping
 
-Before using the network topology, you need to create a [hyper node](https://volcano.sh/en/docs/network_topology_aware_scheduling/) for Volcano.
+The `MinRoleReplicas` map is translated directly into the PodGroup's `spec.minTaskMember` field. Each entry becomes a key‑value pair where the key is the role name and the value is the minimum number of pods that must be scheduled for that role before the gang can start.
 
-PodGroup can set the topology constraints of the job through the networkTopology field, supporting the following configurations:
+**Example:** In the `multi‑node.yaml` example, the gang policy is defined as:
 
-- **mode:** Supports hard and soft modes.
-  - hard: Hard constraint, tasks within the job must be deployed within the same HyperNode.
-  - soft: Soft constraint, tasks are deployed within the same HyperNode as much as possible.
-- **highestTierAllowed:** Used with hard mode, indicating the highest tier of HyperNode allowed for job deployment. This field is not required when mode is soft.
+```yaml
+gangPolicy:
+  minRoleReplicas:
+    405b: 1
+```
 
-You can run the follow command to see the `PodGroup` created by the kthena base ob the `llama-multinode modelServing`.
+This results in the following PodGroup spec (shown earlier):
+
+```yaml
+spec:
+  minTaskMember:
+    405b: 2
+```
+
+Note that the value `2` comes from the role's `replicas` field (which is `2`), not from `minRoleReplicas`. The `minRoleReplicas` defines the minimum required for gang scheduling, while the actual replica count is taken from the role's `replicas`. If `minRoleReplicas` is less than the role's replicas, the gang will still require at least `minRoleReplicas` pods to be scheduled before the job can start.
+
+### Network‑Topology Scheduling
+
+To reduce network latency between pods, you can enable network‑topology scheduling in Volcano. This requires creating a HyperNode resource that groups physical nodes into logical tiers.
+
+**Steps to enable network‑topology scheduling:**
+
+1. **Install Volcano with the network‑topology plugin** (if not already installed). The plugin is included by default in recent Volcano releases.
+
+2. **Create a HyperNode** that describes your cluster's network topology. Refer to the [Volcano documentation](https://volcano.sh/en/docs/network_topology_aware_scheduling/) for details.
+
+3. **Configure the ModelServing** to request topology‑aware scheduling by adding a `networkTopology` field to the `gangPolicy`:
+
+   ```yaml
+   gangPolicy:
+     minRoleReplicas:
+       405b: 1
+     networkTopology:
+       mode: soft   # or "hard"
+       highestTierAllowed: 2   # only for hard mode
+   ```
+
+4. **Apply the updated ModelServing**. The Volcano scheduler will then attempt to place pods within the same HyperNode (or as close as possible) according to the chosen mode.
+
+### Troubleshooting
+
+If pods remain in `Pending` state, check the following:
+
+- **PodGroup status:** Run `kubectl get podgroup -o wide` to see if the PodGroup is `Running` or `Pending`. A `Pending` PodGroup indicates that the gang scheduling requirements are not met (e.g., insufficient resources, missing nodes).
+
+- **Volcano scheduler logs:** Inspect the Volcano scheduler logs for errors or warnings:
+  ```sh
+  kubectl logs -l app=volcano-scheduler -n volcano-system
+  ```
+
+- **Resource quotas:** Ensure your cluster has enough resources (GPU, memory, CPU) to satisfy the `minTaskMember` requirements.
+
+- **Node affinity / taints:** Check if pods have node affinity or taints that prevent scheduling.
+
+You can run the following command to see the `PodGroup` created by Kthena based on the `llama-multinode` ModelServing.
 
 ```sh
 kubectl get podgroup-0 -oyaml
@@ -213,7 +429,18 @@ status:
 ```sh
 kubectl delete modelserving llama-multinode
 
-helm uninstall matrixinfe -n kthena-system
+helm uninstall kthena -n kthena-system
 
 helm uninstall volcano -n volcano-system
 ```
+
+## Next Steps
+
+Now that you have a working multi‑node inference deployment, you can explore other Kthena capabilities:
+
+- **[Autoscaling](../autoscaler.md)** – Configure automatic scaling of your ModelServing based on metrics like request queue length or GPU utilization.
+- **[Router & Routing](../router-routing.md)** – Set up intelligent request routing, canary deployments, and traffic splitting across multiple model versions.
+- **[ModelBooster](../model-booster.md)** – Use ModelBooster to deploy and manage individual models with simplified configuration.
+- **[Prefill‑Decode Disaggregation](../prefill-decode-disaggregation/)** – Learn how to split the prefill and decode stages across different hardware for better resource utilization.
+
+For detailed API references, see the [ModelServing CRD reference](../reference/crd/workload.serving.volcano.sh.md).
