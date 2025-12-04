@@ -102,3 +102,8 @@
 code:not([class*="language-"]) {
     color: var(--ifm-code-color);
 }
+
+/* Adds a 20px gutter around the mermaid diagram */
+.docusaurus-mermaid-container {
+    padding: 20px;
+}

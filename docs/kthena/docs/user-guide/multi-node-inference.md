@@ -52,6 +52,8 @@ This naming convention makes it easy to identify a pod's position in the multiâ€
 The following diagram illustrates the relationship between ModelServing, ServingGroups, Roles, and Pods:
 
 ```mermaid
+%%{init: {'themeVariables': { 'fontSize': '28px'}}}%%
+
 graph TD
     MS[ModelServing] --> SG1[ServingGroup 0]
     MS --> SG2[ServingGroup 1]
@@ -88,7 +90,7 @@ graph TD
 
 ### Getting Started
 
-Deploy llama LLM inference engine as below. The tensor parallel size is 8 and the pipeline parallel size is 2.
+Deploy the Llama LLM inference engine as shown below. The tensor parallel size is 8 and the pipeline parallel size is 2.
 
 ```yaml showLineNumbers
 apiVersion: workload.serving.volcano.sh/v1alpha1
