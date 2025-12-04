@@ -224,8 +224,13 @@ default     llama-multinode-0-405b-0-1    1/1     Running   0          15m     1
 default     llama-multinode-0-405b-1-0    1/1     Running   0          15m     10.244.0.57   192.168.5.58   <none>           <none>
 default     llama-multinode-0-405b-1-1    1/1     Running   0          15m     10.244.0.53   192.168.5.36   <none>           <none>
 ```
+:::note
+The first number in the pod name indicates which `ServingGroup` this pod belongs to. The second number indicates which `Role` it belongs to. The third number indicates the `pod`'s sequence number within Role.
+:::
 
-**Note:** The first number in the pod name indicates which `ServingGroup` this pod belongs to. The second number indicates which `Role` it belongs to. The third number indicates the pod's sequence number within `Role`.
+:::info
+To keep the examples clear, the following sections (Scaling, Rolling Update, Gang Scheduling) use a configuration with a single role (role index 0) to demonstrate scaling, rolling update, and scheduling concepts.
+:::
 
 ## Scaling
 
