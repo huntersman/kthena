@@ -285,6 +285,14 @@ func (m *MockStore) GetHTTPRoutesByGateway(gatewayKey string) []*gatewayv1.HTTPR
 	return args.Get(0).([]*gatewayv1.HTTPRoute)
 }
 
+func (m *MockStore) GetModelRoutesByGateway(gatewayKey string) []*aiv1alpha1.ModelRoute {
+	args := m.Called(gatewayKey)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]*aiv1alpha1.ModelRoute)
+}
+
 func (m *MockStore) GetAllHTTPRoutes() []*gatewayv1.HTTPRoute {
 	args := m.Called()
 	if args.Get(0) == nil {
