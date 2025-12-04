@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -707,10 +708,11 @@ func (lm *ListenerManager) handleHTTPRoute(gatewayKey string) gin.HandlerFunc {
 									break
 								}
 							case gatewayv1.PathMatchRegularExpression:
-								// Simple regex matching - for production use proper regex
-								if strings.Contains(c.Request.URL.Path, strings.Trim(*pathValue, "^$")) {
+								if regexMatched, err := regexp.MatchString(*pathValue, c.Request.URL.Path); err == nil && regexMatched {
 									matched = true
 									break
+								} else if err != nil {
+									klog.Warningf("Invalid regex pattern '%s' in HTTPRoute %s/%s: %v", *pathValue, route.Namespace, route.Name, err)
 								}
 							}
 						}
