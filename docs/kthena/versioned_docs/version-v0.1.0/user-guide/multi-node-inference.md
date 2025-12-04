@@ -224,8 +224,13 @@ default     llama-multinode-0-405b-0-1    1/1     Running   0          15m     1
 default     llama-multinode-0-405b-1-0    1/1     Running   0          15m     10.244.0.57   192.168.5.58   <none>           <none>
 default     llama-multinode-0-405b-1-1    1/1     Running   0          15m     10.244.0.53   192.168.5.36   <none>           <none>
 ```
+:::note
+The first number in the pod name indicates which `ServingGroup` this pod belongs to. The second number indicates which `Role` it belongs to. The third number indicates the `pod`'s sequence number within Role.
+:::
 
-**Note:** The first number in the pod name indicates which `ServingGroup` this pod belongs to. The second number indicates which `Role` it belongs to. The third number indicates the pod's sequence number within `Role`.
+:::info
+To keep the examples clear, the following sections (Scaling, Rolling Update, Gang Scheduling) use a configuration with a single role (role index 0) to demonstrate scaling, rolling update, and scheduling concepts.
+:::
 
 ## Scaling
 
@@ -438,9 +443,9 @@ helm uninstall volcano -n volcano-system
 
 Now that you have a working multi‑node inference deployment, you can explore other Kthena capabilities:
 
-- **[Autoscaling](../autoscaler.md)** – Configure automatic scaling of your ModelServing based on metrics like request queue length or GPU utilization.
-- **[Router & Routing](../router-routing.md)** – Set up intelligent request routing, canary deployments, and traffic splitting across multiple model versions.
-- **[ModelBooster](../model-booster.md)** – Use ModelBooster to deploy and manage individual models with simplified configuration.
-- **[Prefill‑Decode Disaggregation](../prefill-decode-disaggregation/)** – Learn how to split the prefill and decode stages across different hardware for better resource utilization.
+- **[Autoscaling](./autoscaler.md)** – Configure automatic scaling of your ModelServing based on metrics like request queue length or GPU utilization.
+- **[Router & Routing](./router-routing.md)** – Set up intelligent request routing, canary deployments, and traffic splitting across multiple model versions.
+- **[ModelBooster](./model-booster.md)** – Use ModelBooster to deploy and manage individual models with simplified configuration.
+- **[Prefill‑Decode Disaggregation](./prefill-decode-disaggregation/)** – Learn how to split the prefill and decode stages across different hardware for better resource utilization.
 
 For detailed API references, see the [ModelServing CRD reference](../reference/crd/workload.serving.volcano.sh.md).
