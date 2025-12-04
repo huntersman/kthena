@@ -315,17 +315,7 @@ From the pod runtime, we can see that only group 1 has been updated because we s
 
 Gang scheduling is a feature that allows pods to be scheduled together. This is useful when you have a set of pods that need to be scheduled together. For example, you may have a set of pods that need to be scheduled together because they are pods of the same model.
 
-In Kthena, we use [Volcano gang scheduling](https://volcano.sh/en/docs/v1-10-0/plugins/#gang) to ensure that required pods are scheduled concurrently.
-
-Use the following command to install Volcano:
-
-```sh
-helm repo add volcano-sh https://volcano-sh.github.io/helm-charts
-
-helm repo update
-
-helm install volcano volcano-sh/volcano -n volcano-system --create-namespace
-```
+In Kthena, we use [Volcano gang scheduling](https://volcano.sh/en/docs/v1-10-0/plugins/#gang) to ensure that required pods are scheduled concurrently. If you haven't installed Volcano yet, follow the [installation guide](https://volcano.sh/en/docs/installation/).
 
 Kthena creates PodGroups based on the ModelServing. Among these, the important field is `MinRoleReplicas`, which defines the minimum number of replicas required for each role in gang scheduling. This map allows users to specify different minimum replica requirements for different roles.
 
@@ -450,8 +440,7 @@ Now that you have a working multi‑node inference deployment, you can explore o
 
 - **[Autoscaling](../autoscaler.md)** – Configure automatic scaling of your ModelServing based on metrics like request queue length or GPU utilization.
 - **[Router & Routing](../router-routing.md)** – Set up intelligent request routing, canary deployments, and traffic splitting across multiple model versions.
-- **[Monitoring with Prometheus](../../general/prometheus.md)** – Integrate with Prometheus and Grafana to monitor inference metrics, set up alerts, and visualize performance.
 - **[ModelBooster](../model-booster.md)** – Use ModelBooster to deploy and manage individual models with simplified configuration.
 - **[Prefill‑Decode Disaggregation](../prefill-decode-disaggregation/)** – Learn how to split the prefill and decode stages across different hardware for better resource utilization.
 
-For detailed API references, see the [ModelServing CRD reference](../reference/crd/workload.serving.volcano.sh.md) and the [Kthena CLI documentation](../reference/cli/kthena.md).
+For detailed API references, see the [ModelServing CRD reference](../reference/crd/workload.serving.volcano.sh.md).
