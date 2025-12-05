@@ -59,7 +59,7 @@ spec:
                 command:
                   - sh
                   - -c
-                  - "bash /vllm-workspace/examples/online_serving/multi-node-serving.sh worker --ray_address=$(Leader_Node_Address)"
+                  - "bash /vllm-workspace/examples/online_serving/multi-node-serving.sh worker --ray_address=$(ENTRY_ADDRESS)"
                 resources:
                   limits:
                     nvidia.com/gpu: "8"
