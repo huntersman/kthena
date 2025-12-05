@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,7 +27,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
@@ -377,26 +375,9 @@ func (lm *ListenerManager) createPortHandler(port int32) gin.HandlerFunc {
 			return
 		}
 
-		// Try to handle with ModelRoute first (for /v1/* paths)
-		if strings.HasPrefix(c.Request.URL.Path, "/v1/") {
-			modelRoutes := lm.store.GetModelRoutesByGateway(listenerConfig.GatewayKey)
-			if len(modelRoutes) > 0 {
-				lm.router.HandlerFunc()(c)
-				return
-			}
-		}
-
-		// Try to handle with HTTPRoute
-		httpRoutes := lm.store.GetHTTPRoutesByGateway(listenerConfig.GatewayKey)
-		if len(httpRoutes) > 0 {
-			lm.handleHTTPRoute(listenerConfig.GatewayKey)(c)
-			return
-		}
-
-		// Return 404 if neither ModelRoute nor HTTPRoute matched
-		c.JSON(http.StatusNotFound, gin.H{
-			"message": "Not found",
-		})
+		// Route handling logic is now in router.HandlerFunc()
+		// It will handle both /v1/* paths (ModelRoute with HTTPRoute fallback) and non-/v1/* paths (HTTPRoute)
+		lm.router.HandlerFunc()(c)
 	}
 }
 
@@ -670,178 +651,5 @@ func AuthMiddleware(gwRouter *router.Router) gin.HandlerFunc {
 		}
 
 		c.Next()
-	}
-}
-
-// TODO: looking for a mature library for HTTPRoute processing
-func (lm *ListenerManager) handleHTTPRoute(gatewayKey string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Find HTTPRoutes for this Gateway
-		httpRoutes := lm.store.GetHTTPRoutesByGateway(gatewayKey)
-		if len(httpRoutes) == 0 {
-			c.JSON(http.StatusNotFound, gin.H{"message": "No HTTPRoute found"})
-			return
-		}
-
-		// Match HTTPRoute by path and hostname
-		var matchedRoute *gatewayv1.HTTPRoute
-		var matchedPrefix string // Store the matched prefix for URL rewriting
-		for _, route := range httpRoutes {
-			if route == nil {
-				continue
-			}
-
-			matched := false
-			for _, rule := range route.Spec.Rules {
-				if len(rule.Matches) == 0 {
-					matched = true
-					break
-				}
-				for _, match := range rule.Matches {
-					if match.Path != nil {
-						pathType := match.Path.Type
-						pathValue := match.Path.Value
-						if pathType != nil {
-							switch *pathType {
-							case gatewayv1.PathMatchExact:
-								if c.Request.URL.Path == *pathValue {
-									matched = true
-									break
-								}
-							case gatewayv1.PathMatchPathPrefix:
-								if strings.HasPrefix(c.Request.URL.Path, *pathValue) {
-									matched = true
-									matchedPrefix = *pathValue // Store matched prefix
-									break
-								}
-							case gatewayv1.PathMatchRegularExpression:
-								if regexMatched, err := regexp.MatchString(*pathValue, c.Request.URL.Path); err == nil && regexMatched {
-									matched = true
-									break
-								} else if err != nil {
-									klog.Warningf("Invalid regex pattern '%s' in HTTPRoute %s/%s: %v", *pathValue, route.Namespace, route.Name, err)
-								}
-							}
-						}
-					} else {
-						matched = true
-					}
-					if matched {
-						break
-					}
-				}
-				if matched {
-					matchedRoute = route
-					break
-				}
-			}
-			if matched {
-				break
-			}
-		}
-
-		if matchedRoute == nil {
-			c.JSON(http.StatusNotFound, gin.H{"message": "No matching HTTPRoute"})
-			return
-		}
-
-		// Store the matched prefix in context for URL rewriting
-		if matchedPrefix != "" {
-			c.Set("matchedPrefix", matchedPrefix)
-		}
-
-		// Find InferencePool backendRef and apply filters
-		var inferencePoolName types.NamespacedName
-		found := false
-		var matchedRule *gatewayv1.HTTPRouteRule
-		for i := range matchedRoute.Spec.Rules {
-			rule := &matchedRoute.Spec.Rules[i]
-			for _, backendRef := range rule.BackendRefs {
-				if backendRef.Group != nil && *backendRef.Group == "inference.networking.k8s.io" &&
-					backendRef.Kind != nil && *backendRef.Kind == "InferencePool" {
-					inferencePoolName.Namespace = matchedRoute.Namespace
-					if backendRef.Namespace != nil {
-						inferencePoolName.Namespace = string(*backendRef.Namespace)
-					}
-					inferencePoolName.Name = string(backendRef.Name)
-					found = true
-					matchedRule = rule
-					break
-				}
-			}
-			if found {
-				break
-			}
-		}
-
-		if !found {
-			c.JSON(http.StatusBadRequest, gin.H{"message": "No InferencePool backendRef found"})
-			return
-		}
-
-		// Apply HTTPURLRewriteFilter if present
-		if matchedRule != nil && matchedRule.Filters != nil {
-			for _, filter := range matchedRule.Filters {
-				if filter.Type == gatewayv1.HTTPRouteFilterURLRewrite && filter.URLRewrite != nil {
-					lm.applyURLRewrite(c, filter.URLRewrite)
-				}
-			}
-		}
-
-		// Pass InferencePool information to doLoadbalance via context
-		c.Set("inferencePoolName", inferencePoolName)
-
-		// Use existing doLoadbalance infrastructure which will detect InferencePool from context
-		lm.router.HandlerFunc()(c)
-	}
-}
-
-// applyURLRewrite applies HTTPURLRewriteFilter to the request
-func (lm *ListenerManager) applyURLRewrite(c *gin.Context, urlRewrite *gatewayv1.HTTPURLRewriteFilter) {
-	// Apply hostname rewrite
-	if urlRewrite.Hostname != nil {
-		newHostname := string(*urlRewrite.Hostname)
-		c.Request.Host = newHostname
-		klog.V(4).Infof("Rewrote hostname to: %s", newHostname)
-	}
-
-	// Apply path rewrite
-	if urlRewrite.Path != nil {
-		originalPath := c.Request.URL.Path
-		newPath := originalPath
-
-		switch urlRewrite.Path.Type {
-		case gatewayv1.FullPathHTTPPathModifier:
-			// Replace the full path
-			if urlRewrite.Path.ReplaceFullPath != nil {
-				newPath = *urlRewrite.Path.ReplaceFullPath
-				klog.V(4).Infof("Rewrote full path from %s to %s", originalPath, newPath)
-			}
-
-		case gatewayv1.PrefixMatchHTTPPathModifier:
-			// Replace the matched prefix with the specified replacement
-			if urlRewrite.Path.ReplacePrefixMatch != nil {
-				// Get the matched prefix from context
-				prefix, exists := c.Get("matchedPrefix")
-				if !exists {
-					klog.Errorf("matchedPrefix not found in context for path rewrite")
-					break
-				}
-				matchedPrefix, ok := prefix.(string)
-				if !ok || matchedPrefix == "" {
-					klog.Errorf("matchedPrefix is not a valid string in context")
-					break
-				}
-				// Replace the matched prefix
-				replacement := *urlRewrite.Path.ReplacePrefixMatch
-				newPath = replacement + strings.TrimPrefix(originalPath, matchedPrefix)
-				klog.V(4).Infof("Rewrote path prefix from %s to %s (matched prefix: %s)", originalPath, newPath, matchedPrefix)
-			}
-		}
-
-		// Update the request path
-		c.Request.URL.Path = newPath
-		// Also update the raw path to maintain consistency
-		c.Request.URL.RawPath = ""
 	}
 }

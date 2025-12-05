@@ -9,7 +9,4 @@ spec:
     matchLabels:
       app: deepseek-r1-1-5b
   endpointPickerRef:
-    name: deepseek-r1-1-5b-epp
-    port:
-      number: 8000
-
+    name: deepseek-r1-1-5b
