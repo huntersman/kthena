@@ -26,24 +26,26 @@ import (
 )
 
 type Server struct {
-	store            datastore.Store
-	controllers      Controller
-	listenerManager  *ListenerManager
-	EnableTLS        bool
-	TLSCertFile      string
-	TLSKeyFile       string
-	Port             string
-	EnableGatewayAPI bool
+	store                              datastore.Store
+	controllers                        Controller
+	listenerManager                    *ListenerManager
+	EnableTLS                          bool
+	TLSCertFile                        string
+	TLSKeyFile                         string
+	Port                               string
+	EnableGatewayAPI                   bool
+	EnableGatewayAPIInferenceExtension bool
 }
 
-func NewServer(port string, enableTLS bool, cert, key string, enableGatewayAPI bool) *Server {
+func NewServer(port string, enableTLS bool, cert, key string, enableGatewayAPI bool, enableGatewayAPIInferenceExtension bool) *Server {
 	return &Server{
-		store:            nil,
-		EnableTLS:        enableTLS,
-		TLSCertFile:      cert,
-		TLSKeyFile:       key,
-		Port:             port,
-		EnableGatewayAPI: enableGatewayAPI,
+		store:                              nil,
+		EnableTLS:                          enableTLS,
+		TLSCertFile:                        cert,
+		TLSKeyFile:                         key,
+		Port:                               port,
+		EnableGatewayAPI:                   enableGatewayAPI,
+		EnableGatewayAPIInferenceExtension: enableGatewayAPIInferenceExtension,
 	}
 }
 
@@ -55,7 +57,7 @@ func (s *Server) Run(ctx context.Context) {
 	// must be run before the controller, because it will register callbacks
 	r := NewRouter(store)
 	// start controller
-	s.controllers = startControllers(store, ctx.Done(), s.EnableGatewayAPI, s.Port)
+	s.controllers = startControllers(store, ctx.Done(), s.EnableGatewayAPI, s.Port, s.EnableGatewayAPIInferenceExtension)
 
 	// Start store's periodic update loop after controllers have synced
 	if !cache.WaitForCacheSync(ctx.Done(), s.controllers.HasSynced) {

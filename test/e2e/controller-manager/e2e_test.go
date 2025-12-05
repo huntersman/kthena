@@ -163,7 +163,7 @@ func runNginxPod(t *testing.T, kubeClient *kubernetes.Clientset, ctx context.Con
 			}
 		}
 		return false
-	}, 2*time.Minute, 5*time.Second, "Pod did not become ready")
+	}, 5*time.Minute, 5*time.Second, "Pod did not become ready")
 	return podName, err
 }
 

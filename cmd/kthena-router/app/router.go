@@ -118,11 +118,17 @@ func (s *Server) startDefaultServer(ctx context.Context, router *router.Router, 
 		debugGroup.GET("/modelroutes", debugHandler.ListModelRoutes)
 		debugGroup.GET("/modelservers", debugHandler.ListModelServers)
 		debugGroup.GET("/pods", debugHandler.ListPods)
+		debugGroup.GET("/gateways", debugHandler.ListGateways)
+		debugGroup.GET("/httproutes", debugHandler.ListHTTPRoutes)
+		debugGroup.GET("/inferencepools", debugHandler.ListInferencePools)
 
 		// Get specific resources
 		debugGroup.GET("/namespaces/:namespace/modelroutes/:name", debugHandler.GetModelRoute)
 		debugGroup.GET("/namespaces/:namespace/modelservers/:name", debugHandler.GetModelServer)
 		debugGroup.GET("/namespaces/:namespace/pods/:name", debugHandler.GetPod)
+		debugGroup.GET("/namespaces/:namespace/gateways/:name", debugHandler.GetGateway)
+		debugGroup.GET("/namespaces/:namespace/httproutes/:name", debugHandler.GetHTTPRoute)
+		debugGroup.GET("/namespaces/:namespace/inferencepools/:name", debugHandler.GetInferencePool)
 	}
 
 	// Handle /v1/*path with middleware
@@ -288,6 +294,18 @@ func (lm *ListenerManager) createPortHandler(port int32) gin.HandlerFunc {
 					debugHandler.ListPods(c)
 					return
 				}
+				if path == "/debug/config_dump/gateways" {
+					debugHandler.ListGateways(c)
+					return
+				}
+				if path == "/debug/config_dump/httproutes" {
+					debugHandler.ListHTTPRoutes(c)
+					return
+				}
+				if path == "/debug/config_dump/inferencepools" {
+					debugHandler.ListInferencePools(c)
+					return
+				}
 				// Handle parameterized debug routes
 				if strings.HasPrefix(path, "/debug/config_dump/namespaces/") {
 					parts := strings.Split(strings.TrimPrefix(path, "/debug/config_dump/namespaces/"), "/")
@@ -310,6 +328,18 @@ func (lm *ListenerManager) createPortHandler(port int32) gin.HandlerFunc {
 						}
 						if resourceType == "pods" {
 							debugHandler.GetPod(c)
+							return
+						}
+						if resourceType == "gateways" {
+							debugHandler.GetGateway(c)
+							return
+						}
+						if resourceType == "httproutes" {
+							debugHandler.GetHTTPRoute(c)
+							return
+						}
+						if resourceType == "inferencepools" {
+							debugHandler.GetInferencePool(c)
 							return
 						}
 					}
@@ -345,16 +375,9 @@ func (lm *ListenerManager) createPortHandler(port int32) gin.HandlerFunc {
 			return
 		}
 
-		// Handle /v1/*path
-		if strings.HasPrefix(c.Request.URL.Path, "/v1/") {
-			lm.router.HandlerFunc()(c)
-			return
-		}
-
-		// Return 404 for all other paths
-		c.JSON(http.StatusNotFound, gin.H{
-			"message": "Not found",
-		})
+		// Route handling logic is now in router.HandlerFunc()
+		// It will handle both /v1/* paths (ModelRoute with HTTPRoute fallback) and non-/v1/* paths (HTTPRoute)
+		lm.router.HandlerFunc()(c)
 	}
 }
 
@@ -493,14 +516,12 @@ func (lm *ListenerManager) StartListenersForGateway(gateway *gatewayv1.Gateway) 
 	oldConfigs := lm.gatewayListeners[gatewayKey]
 
 	newConfigs := buildListenerConfigsFromGateway(gateway)
-
 	// Build maps for efficient comparison
 	oldConfigMap := make(map[string]ListenerConfig)
 	for _, config := range oldConfigs {
 		key := config.listenerConfigKey()
 		oldConfigMap[key] = config
 	}
-
 	newConfigMap := make(map[string]ListenerConfig)
 	for _, config := range newConfigs {
 		key := config.listenerConfigKey()

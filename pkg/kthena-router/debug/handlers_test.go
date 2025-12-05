@@ -30,6 +30,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	inferencev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aiv1alpha1 "github.com/volcano-sh/kthena/pkg/apis/networking/v1alpha1"
@@ -230,6 +231,82 @@ func (m *MockStore) GetAllGateways() []*gatewayv1.Gateway {
 		return nil
 	}
 	return args.Get(0).([]*gatewayv1.Gateway)
+}
+
+func (m *MockStore) AddOrUpdateInferencePool(inferencePool *inferencev1.InferencePool) error {
+	args := m.Called(inferencePool)
+	return args.Error(0)
+}
+
+func (m *MockStore) DeleteInferencePool(key string) error {
+	args := m.Called(key)
+	return args.Error(0)
+}
+
+func (m *MockStore) GetInferencePool(key string) *inferencev1.InferencePool {
+	args := m.Called(key)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(*inferencev1.InferencePool)
+}
+
+func (m *MockStore) GetPodsByInferencePool(name types.NamespacedName) ([]*datastore.PodInfo, error) {
+	args := m.Called(name)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*datastore.PodInfo), args.Error(1)
+}
+
+func (m *MockStore) AddOrUpdateHTTPRoute(httpRoute *gatewayv1.HTTPRoute) error {
+	args := m.Called(httpRoute)
+	return args.Error(0)
+}
+
+func (m *MockStore) DeleteHTTPRoute(key string) error {
+	args := m.Called(key)
+	return args.Error(0)
+}
+
+func (m *MockStore) GetHTTPRoute(key string) *gatewayv1.HTTPRoute {
+	args := m.Called(key)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(*gatewayv1.HTTPRoute)
+}
+
+func (m *MockStore) GetHTTPRoutesByGateway(gatewayKey string) []*gatewayv1.HTTPRoute {
+	args := m.Called(gatewayKey)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]*gatewayv1.HTTPRoute)
+}
+
+func (m *MockStore) GetModelRoutesByGateway(gatewayKey string) []*aiv1alpha1.ModelRoute {
+	args := m.Called(gatewayKey)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]*aiv1alpha1.ModelRoute)
+}
+
+func (m *MockStore) GetAllHTTPRoutes() []*gatewayv1.HTTPRoute {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]*gatewayv1.HTTPRoute)
+}
+
+func (m *MockStore) GetAllInferencePools() []*inferencev1.InferencePool {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]*inferencev1.InferencePool)
 }
 
 func TestListModelRoutes(t *testing.T) {

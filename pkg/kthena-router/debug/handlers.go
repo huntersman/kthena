@@ -17,11 +17,14 @@ limitations under the License.
 package debug
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"k8s.io/apimachinery/pkg/types"
+	inferencev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	aiv1alpha1 "github.com/volcano-sh/kthena/pkg/apis/networking/v1alpha1"
 	"github.com/volcano-sh/kthena/pkg/kthena-router/datastore"
@@ -84,6 +87,27 @@ type Metrics struct {
 	RequestRunningNum float64 `json:"requestRunningNum"`
 	TPOT              float64 `json:"tpot"`
 	TTFT              float64 `json:"ttft"`
+}
+
+type GatewayResponse struct {
+	Name      string                  `json:"name"`
+	Namespace string                  `json:"namespace"`
+	Spec      gatewayv1.GatewaySpec   `json:"spec"`
+	Status    gatewayv1.GatewayStatus `json:"status,omitempty"`
+}
+
+type HTTPRouteResponse struct {
+	Name      string                    `json:"name"`
+	Namespace string                    `json:"namespace"`
+	Spec      gatewayv1.HTTPRouteSpec   `json:"spec"`
+	Status    gatewayv1.HTTPRouteStatus `json:"status,omitempty"`
+}
+
+type InferencePoolResponse struct {
+	Name      string                          `json:"name"`
+	Namespace string                          `json:"namespace"`
+	Spec      inferencev1.InferencePoolSpec   `json:"spec"`
+	Status    inferencev1.InferencePoolStatus `json:"status,omitempty"`
 }
 
 // List endpoints
@@ -151,6 +175,66 @@ func (h *DebugHandler) ListPods(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"pods": responses})
+}
+
+// ListGateways handles GET /debug/config_dump/gateways
+func (h *DebugHandler) ListGateways(c *gin.Context) {
+	gateways := h.store.GetAllGateways()
+
+	var responses []GatewayResponse
+	for _, gw := range gateways {
+		response := GatewayResponse{
+			Name:      gw.Name,
+			Namespace: gw.Namespace,
+			Spec:      gw.Spec,
+			Status:    gw.Status,
+		}
+		responses = append(responses, response)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"gateways": responses})
+}
+
+// ListHTTPRoutes handles GET /debug/config_dump/httproutes
+func (h *DebugHandler) ListHTTPRoutes(c *gin.Context) {
+	httpRoutes := h.store.GetAllHTTPRoutes()
+
+	var responses []HTTPRouteResponse
+	for _, hr := range httpRoutes {
+		if hr == nil {
+			continue
+		}
+		response := HTTPRouteResponse{
+			Name:      hr.Name,
+			Namespace: hr.Namespace,
+			Spec:      hr.Spec,
+			Status:    hr.Status,
+		}
+		responses = append(responses, response)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"httproutes": responses})
+}
+
+// ListInferencePools handles GET /debug/config_dump/inferencepools
+func (h *DebugHandler) ListInferencePools(c *gin.Context) {
+	inferencePools := h.store.GetAllInferencePools()
+
+	var responses []InferencePoolResponse
+	for _, ip := range inferencePools {
+		if ip == nil {
+			continue
+		}
+		response := InferencePoolResponse{
+			Name:      ip.Name,
+			Namespace: ip.Namespace,
+			Spec:      ip.Spec,
+			Status:    ip.Status,
+		}
+		responses = append(responses, response)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"inferencepools": responses})
 }
 
 // Get specific resource endpoints
@@ -245,6 +329,90 @@ func (h *DebugHandler) GetPod(c *gin.Context) {
 	}
 
 	response := h.convertPodInfoToResponse(namespacedName, podInfo, true)
+	c.JSON(http.StatusOK, response)
+}
+
+// GetGateway handles GET /debug/config_dump/namespaces/{namespace}/gateways/{name}
+func (h *DebugHandler) GetGateway(c *gin.Context) {
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	if namespace == "" || name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "namespace and name parameters are required"})
+		return
+	}
+
+	key := fmt.Sprintf("%s/%s", namespace, name)
+	gw := h.store.GetGateway(key)
+
+	if gw == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Gateway not found"})
+		return
+	}
+
+	response := GatewayResponse{
+		Name:      name,
+		Namespace: namespace,
+		Spec:      gw.Spec,
+		Status:    gw.Status,
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// GetHTTPRoute handles GET /debug/config_dump/namespaces/{namespace}/httproutes/{name}
+func (h *DebugHandler) GetHTTPRoute(c *gin.Context) {
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	if namespace == "" || name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "namespace and name parameters are required"})
+		return
+	}
+
+	key := fmt.Sprintf("%s/%s", namespace, name)
+	hr := h.store.GetHTTPRoute(key)
+
+	if hr == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "HTTPRoute not found"})
+		return
+	}
+
+	response := HTTPRouteResponse{
+		Name:      name,
+		Namespace: namespace,
+		Spec:      hr.Spec,
+		Status:    hr.Status,
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// GetInferencePool handles GET /debug/config_dump/namespaces/{namespace}/inferencepools/{name}
+func (h *DebugHandler) GetInferencePool(c *gin.Context) {
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	if namespace == "" || name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "namespace and name parameters are required"})
+		return
+	}
+
+	key := fmt.Sprintf("%s/%s", namespace, name)
+	ip := h.store.GetInferencePool(key)
+
+	if ip == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "InferencePool not found"})
+		return
+	}
+
+	response := InferencePoolResponse{
+		Name:      name,
+		Namespace: namespace,
+		Spec:      ip.Spec,
+		Status:    ip.Status,
+	}
+
 	c.JSON(http.StatusOK, response)
 }
 

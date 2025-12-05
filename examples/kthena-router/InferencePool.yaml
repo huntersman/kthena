@@ -1,0 +1,12 @@
+apiVersion: inference.networking.k8s.io/v1
+kind: InferencePool
+metadata:
+  name: deepseek-r1-1-5b
+spec:
+  targetPorts:
+    - number: 8000
+  selector:
+    matchLabels:
+      app: deepseek-r1-1-5b
+  endpointPickerRef:
+    name: deepseek-r1-1-5b
