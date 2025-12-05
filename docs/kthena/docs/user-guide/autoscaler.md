@@ -31,35 +31,17 @@ The [`AutoscalingPolicy`](reference/crd/workload.serving.volcano.sh.md#autoscali
 - *Example*: With `tolerancePercent: 10` and a target value of 10.0, scaling occurs only if the actual metric value exceeds 11.0 (target + 10%) or falls below 9.0 (target - 10%)
 
 #### Behavior Configuration
+
 Controls detailed scaling behavior for both **scale-up** and **scale-down** operations:
 
-**Scale-Up Behavior**
-
-Defines how the system responds to increased load:
-
-- **Panic Policy** (Handles sudden traffic spikes):
-  - **panicThresholdPercent**: Percentage above target that triggers panic mode
-    - *Example*: `panicThresholdPercent: 150` triggers when metrics reach 150% of target
-  - **panicModeHold**: Duration to remain in panic mode
-    - *Example*: `panicModeHold: 5m` keeps panic mode active for 5 minutes
-  - **Purpose**: Accelerates scaling during sudden traffic spikes to prevent service degradation
-
-- **Stable Policy** (Handles gradual load increases):
-  - **stabilizationWindow**: Time window to observe metrics before making scaling decisions
-    - *Example*: `stabilizationWindow: 1m` waits 1 minute of sustained high load before scaling
-  - **period**: Interval between scaling evaluations
-    - *Example*: `period: 30s` checks conditions every 30 seconds
-  - **Purpose**: Ensures scaling decisions are based on stable load patterns rather than transient spikes
-
-**Scale-Down Behavior**
-
-Defines how the system responds to decreased load:
-
-- **stabilizationWindow**: Longer time window to observe decreased load before scaling down
-  - *Example*: `stabilizationWindow: 5m` requires 5 minutes of sustained low load
-  - **Rationale**: Typically set longer than scale-up to ensure system stability and avoid premature capacity reduction
-- **period**: Interval between scale-down evaluations
-  - *Example*: `period: 1m` checks conditions every minute
+| Policy | Parameter | Description | Example | Purpose/Rationale |
+|--------|-----------|-------------|---------|-------------------|
+| Scale-Up (Panic) | `panicThresholdPercent` | Percentage above target that triggers panic mode | `150` triggers when metrics reach 150% of target | Accelerates scaling during sudden traffic spikes to prevent service degradation |
+| Scale-Up (Panic) | `panicModeHold` | Duration to remain in panic mode | `5m` keeps panic mode active for 5 minutes | Ensures panic mode persists long enough to handle spike |
+| Scale-Up (Stable) | `stabilizationWindow` | Time window to observe metrics before making scaling decisions | `1m` waits 1 minute of sustained high load before scaling | Ensures scaling decisions are based on stable load patterns rather than transient spikes |
+| Scale-Up (Stable) | `period` | Interval between scaling evaluations | `30s` checks conditions every 30 seconds | Regular assessment of load conditions |
+| Scale-Down | `stabilizationWindow` | Longer time window to observe decreased load before scaling down | `5m` requires 5 minutes of sustained low load | Typically set longer than scale-up to ensure system stability and avoid premature capacity reduction |
+| Scale-Down | `period` | Interval between scale-down evaluations | `1m` checks conditions every minute | Regular assessment of load conditions |
 
 These configuration parameters work together to create a responsive yet stable autoscaling system that balances resource utilization with performance requirements.
 
