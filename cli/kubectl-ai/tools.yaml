@@ -4,6 +4,8 @@
   command_desc: |
     The kthena command-line interface for AI inference workload management.
 
+    For detailed documentation and advanced usage examples, visit https://kthena.volcano.sh/
+    
     Core subcommands and usage patterns:
 
     ## Template Management

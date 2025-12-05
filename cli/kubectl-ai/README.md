@@ -91,7 +91,7 @@ kubectl-ai --custom-tools-config=cli/kubectl-ai/tools.yaml "your prompt"
 ```
 
 ### Extending the Tools File
-You can merge Kthena’s tool definition with other custom tools by editing `tools.yaml`. Refer to the [kubectl‑ai tools documentation](https://github.com/GoogleCloudPlatform/kubectl‑ai/blob/main/docs/tools.md) for the full schema.
+You can merge Kthena’s tool definition with other custom tools by editing `tools.yaml`. Refer to the [kubectl‑ai tools documentation](https://github.com/GoogleCloudPlatform/kubectl-ai/blob/main/docs/tools.md) for the full schema.
 
 ## Troubleshooting
 
