@@ -120,21 +120,20 @@ const sidebars: SidebarsConfig = {
             },
           ],
         },
-        // TODO: show CLI doc after CLI renaming
-        // {
-        //   type: 'category',
-        //   label: 'Minfer CLI',
-        //   items: [
-        //     { type: 'doc', id: 'reference/cli/minfer', label: 'Minfer' },
-        //     { type: 'doc', id: 'reference/cli/minfer_create', label: 'Create' },
-        //     { type: 'doc', id: 'reference/cli/minfer_get', label: 'Get' },
-        //     {
-        //       type: 'doc',
-        //       id: 'reference/cli/minfer_describe',
-        //       label: 'Describe',
-        //     },
-        //   ],
-        // },
+        {
+          type: 'category',
+          label: 'Kthena CLI',
+          items: [
+            { type: 'doc', id: 'reference/cli/kthena', label: 'Kthena' },
+            { type: 'doc', id: 'reference/cli/kthena_create', label: 'Create' },
+            { type: 'doc', id: 'reference/cli/kthena_get', label: 'Get' },
+            {
+              type: 'doc',
+              id: 'reference/cli/kthena_describe',
+              label: 'Describe',
+            },
+          ],
+        },
       ],
     },
   ],
