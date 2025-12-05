@@ -673,6 +673,7 @@ func AuthMiddleware(gwRouter *router.Router) gin.HandlerFunc {
 	}
 }
 
+// TODO: looking for a mature library for HTTPRoute processing
 func (lm *ListenerManager) handleHTTPRoute(gatewayKey string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Find HTTPRoutes for this Gateway
@@ -684,6 +685,7 @@ func (lm *ListenerManager) handleHTTPRoute(gatewayKey string) gin.HandlerFunc {
 
 		// Match HTTPRoute by path and hostname
 		var matchedRoute *gatewayv1.HTTPRoute
+		var matchedPrefix string // Store the matched prefix for URL rewriting
 		for _, route := range httpRoutes {
 			if route == nil {
 				continue
@@ -709,6 +711,7 @@ func (lm *ListenerManager) handleHTTPRoute(gatewayKey string) gin.HandlerFunc {
 							case gatewayv1.PathMatchPathPrefix:
 								if strings.HasPrefix(c.Request.URL.Path, *pathValue) {
 									matched = true
+									matchedPrefix = *pathValue // Store matched prefix
 									break
 								}
 							case gatewayv1.PathMatchRegularExpression:
@@ -742,10 +745,17 @@ func (lm *ListenerManager) handleHTTPRoute(gatewayKey string) gin.HandlerFunc {
 			return
 		}
 
-		// Find InferencePool backendRef
+		// Store the matched prefix in context for URL rewriting
+		if matchedPrefix != "" {
+			c.Set("matchedPrefix", matchedPrefix)
+		}
+
+		// Find InferencePool backendRef and apply filters
 		var inferencePoolName types.NamespacedName
 		found := false
-		for _, rule := range matchedRoute.Spec.Rules {
+		var matchedRule *gatewayv1.HTTPRouteRule
+		for i := range matchedRoute.Spec.Rules {
+			rule := &matchedRoute.Spec.Rules[i]
 			for _, backendRef := range rule.BackendRefs {
 				if backendRef.Group != nil && *backendRef.Group == "inference.networking.k8s.io" &&
 					backendRef.Kind != nil && *backendRef.Kind == "InferencePool" {
@@ -755,6 +765,7 @@ func (lm *ListenerManager) handleHTTPRoute(gatewayKey string) gin.HandlerFunc {
 					}
 					inferencePoolName.Name = string(backendRef.Name)
 					found = true
+					matchedRule = rule
 					break
 				}
 			}
@@ -768,10 +779,69 @@ func (lm *ListenerManager) handleHTTPRoute(gatewayKey string) gin.HandlerFunc {
 			return
 		}
 
+		// Apply HTTPURLRewriteFilter if present
+		if matchedRule != nil && matchedRule.Filters != nil {
+			for _, filter := range matchedRule.Filters {
+				if filter.Type == gatewayv1.HTTPRouteFilterURLRewrite && filter.URLRewrite != nil {
+					lm.applyURLRewrite(c, filter.URLRewrite)
+				}
+			}
+		}
+
 		// Pass InferencePool information to doLoadbalance via context
 		c.Set("inferencePoolName", inferencePoolName)
 
 		// Use existing doLoadbalance infrastructure which will detect InferencePool from context
 		lm.router.HandlerFunc()(c)
+	}
+}
+
+// applyURLRewrite applies HTTPURLRewriteFilter to the request
+func (lm *ListenerManager) applyURLRewrite(c *gin.Context, urlRewrite *gatewayv1.HTTPURLRewriteFilter) {
+	// Apply hostname rewrite
+	if urlRewrite.Hostname != nil {
+		newHostname := string(*urlRewrite.Hostname)
+		c.Request.Host = newHostname
+		klog.V(4).Infof("Rewrote hostname to: %s", newHostname)
+	}
+
+	// Apply path rewrite
+	if urlRewrite.Path != nil {
+		originalPath := c.Request.URL.Path
+		newPath := originalPath
+
+		switch urlRewrite.Path.Type {
+		case gatewayv1.FullPathHTTPPathModifier:
+			// Replace the full path
+			if urlRewrite.Path.ReplaceFullPath != nil {
+				newPath = *urlRewrite.Path.ReplaceFullPath
+				klog.V(4).Infof("Rewrote full path from %s to %s", originalPath, newPath)
+			}
+
+		case gatewayv1.PrefixMatchHTTPPathModifier:
+			// Replace the matched prefix with the specified replacement
+			if urlRewrite.Path.ReplacePrefixMatch != nil {
+				// Get the matched prefix from context
+				prefix, exists := c.Get("matchedPrefix")
+				if !exists {
+					klog.Errorf("matchedPrefix not found in context for path rewrite")
+					break
+				}
+				matchedPrefix, ok := prefix.(string)
+				if !ok || matchedPrefix == "" {
+					klog.Errorf("matchedPrefix is not a valid string in context")
+					break
+				}
+				// Replace the matched prefix
+				replacement := *urlRewrite.Path.ReplacePrefixMatch
+				newPath = replacement + strings.TrimPrefix(originalPath, matchedPrefix)
+				klog.V(4).Infof("Rewrote path prefix from %s to %s (matched prefix: %s)", originalPath, newPath, matchedPrefix)
+			}
+		}
+
+		// Update the request path
+		c.Request.URL.Path = newPath
+		// Also update the raw path to maintain consistency
+		c.Request.URL.RawPath = ""
 	}
 }
