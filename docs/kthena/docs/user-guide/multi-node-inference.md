@@ -93,6 +93,7 @@ graph TD
 Deploy the Llama LLM inference engine as shown below. The tensor parallel size is 8 and the pipeline parallel size is 2.
 
 ```yaml showLineNumbers
+# multi-node.yaml
 apiVersion: workload.serving.volcano.sh/v1alpha1
 kind: ModelServing
 metadata:
