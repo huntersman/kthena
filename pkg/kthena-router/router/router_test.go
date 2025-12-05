@@ -361,7 +361,7 @@ func TestRouter_HandlerFunc_ModelNotFound(t *testing.T) {
 	router.HandlerFunc()(c)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
-	assert.Contains(t, w.Body.String(), "can't find corresponding model server")
+	assert.Contains(t, w.Body.String(), "route not found")
 }
 
 func TestRouter_HandlerFunc_ScheduleFailure(t *testing.T) {
