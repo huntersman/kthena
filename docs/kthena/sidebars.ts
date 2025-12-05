@@ -123,6 +123,10 @@ const sidebars: SidebarsConfig = {
         {
           type: 'category',
           label: 'Kthena CLI',
+          link: {
+            type: 'doc',
+            id: 'reference/cli/kthena_cli',
+          },
           items: [
             { type: 'doc', id: 'reference/cli/kthena', label: 'Kthena' },
             { type: 'doc', id: 'reference/cli/kthena_create', label: 'Create' },
