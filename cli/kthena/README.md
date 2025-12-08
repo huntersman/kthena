@@ -76,6 +76,12 @@ The `kthena` CLI follows kubectl-style verb-noun grammar and provides an easy wa
 - Create Kthena resources from predefined manifest templates
 - Manage inference workloads, models, and autoscaling policies with kubectl-like commands
 
+### Install
+
+```bash
+go install github.com/volcano-sh/kthena/cli/kthena@latest
+```
+
 ### Build from Source
 
 ```bash
