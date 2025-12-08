@@ -29,8 +29,7 @@ Each subcommand supports additional resource‑specific operations. For a comple
 Download the latest binary from the [releases page](https://github.com/volcano-sh/kthena/releases) or build from source:
 
 ```bash
-go build -o bin/kthena cli/kthena/main.go
-export PATH=$PATH:$(pwd)/bin
+go install github.com/volcano-sh/kthena/cli/kthena@latest
 ```
 
 ### Quick Examples
