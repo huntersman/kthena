@@ -1,1 +1,1 @@
-refer to the `Integrating with kubectl‑ai` section of [Kthena CLI](../../docs/kthena/docs/reference/cli/kthena_cli.md)
+refer to the `Integrating with kubectl‑ai` section of [Kthena CLI](../../docs/kthena/docs/reference/kthena_cli.md)
