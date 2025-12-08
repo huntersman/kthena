@@ -79,18 +79,22 @@ You can customize the installation by providing values:
 helm install kthena oci://ghcr.io/volcano-sh/charts/kthena \
   --namespace kthena-system \
   --create-namespace \
-  --set controller.replicas=2 \
-  --set router.service.type=LoadBalancer
+  --set workload.controllerManager.replicas=2 \
+  --set networking.kthenaRouter.tls.enabled=true
 ```
 
 ### Common Configuration Parameters
 
 | Parameter | Description | Default |
 | :------------------ | :---------------------------- | :-------- |
-| `controller.replicas` | Number of controller replicas | `1` |
-| `router.service.type` | Router service type | `ClusterIP` |
-| `registry.enabled` | Enable model registry | `true` |
-| `autoscaler.enabled` | Enable auto-scaling | `true` |
+| `workload.controllerManager.replicas` | Number of controller manager replicas | `1` |
+| `networking.kthenaRouter.replicas` | Number of router replicas | `1` |
+| `networking.kthenaRouter.tls.enabled` | Enable TLS for the router | `false` |
+| `global.certManagementMode` | Certificate management mode (`auto`, `cert-manager`, `manual`) | `auto` |
+
+### Full Values Reference
+
+For a complete list of all configurable Helm values, see the [Helm Chart Values Reference](../reference/helm-chart-values.md).
 
 ## Verification
 

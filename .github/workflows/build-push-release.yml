@@ -396,7 +396,7 @@ jobs:
 
             - [Getting Started](https://kthena.volcano.sh/docs/getting-started)
             - [CLI Reference](https://kthena.volcano.sh/docs/reference/cli)
-            - [Helm Chart Values](https://kthena.volcano.sh/docs/reference/helm)
+            - [Helm Chart Values](https://kthena.volcano.sh/docs/reference/helm-chart-values)
 
             ---
 

@@ -105,6 +105,11 @@ const sidebars: SidebarsConfig = {
           label: 'Router Access Log Fields',
         },
         {
+          type: 'doc',
+          id: 'reference/helm-chart-values',
+          label: 'Helm Chart Values',
+        },
+        {
           type: 'category',
           label: 'CRD Reference',
           items: [
