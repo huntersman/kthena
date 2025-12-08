@@ -163,7 +163,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # merge images
+  # merge images: Create Multi-Arch Manifests
   merge_images:
     needs: [ setup, build_images ]
     runs-on: ubuntu-latest
