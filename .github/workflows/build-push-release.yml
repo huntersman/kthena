@@ -268,7 +268,7 @@ jobs:
           OS="${{ matrix.os }}"
           ARCH="${{ matrix.arch }}"
           BINARY_NAME="kthena${{ matrix.ext }}"
-          ARCHIVE_NAME="kthena-${VERSION}-${OS}-${ARCH}"
+          ARCHIVE_NAME="kthena-cli-${OS}-${ARCH}"
           if [[ "${{ matrix.os }}" == "windows" ]]; then
             zip -j "${ARCHIVE_NAME}.zip" "${BINARY_NAME}"
             echo "archive_path=${ARCHIVE_NAME}.zip" >> $GITHUB_ENV
@@ -369,6 +369,38 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           prerelease: ${{ needs.setup.outputs.prerelease }}
+          body: |
+            ## Release ${{ needs.setup.outputs.version }}
+
+            This release includes the following artifacts:
+
+            - **Helm Chart**: `kthena.tgz` (OCI artifact pushed to GHCR)
+            - **Installation YAML**: `kthena-install.yaml` (rendered with `helm template`)
+            - **CLI Binaries**: Pre-built binaries for Linux (amd64/arm64), macOS (amd64/arm64), and Windows (amd64)
+
+            ### Installation
+
+            #### Using Helm
+
+            ```bash
+            helm install kthena oci://ghcr.io/${{ github.repository_owner }}/charts/kthena --version ${{ needs.setup.outputs.version }} --namespace kthena-system --create-namespace
+            ```
+
+            #### Using kubectl
+
+            ```bash
+            kubectl apply -f kthena-install.yaml
+            ```
+
+            ### Documentation
+
+            - [Getting Started](https://kthena.volcano.sh/docs/getting-started)
+            - [CLI Reference](https://kthena.volcano.sh/docs/reference/cli)
+            - [Helm Chart Values](https://kthena.volcano.sh/docs/reference/helm)
+
+            ---
+
+            *Release notes are automatically generated from commits.*
           generate_release_notes: true
           files: |
             ./kthena.tgz

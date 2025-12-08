@@ -1,6 +1,6 @@
 # Kthena CLI
 
-The Kthena CLI (`kthena`) is a command-line interface for managing AI inference workloads on Kubernetes. It provides commands to create, inspect, and manage model deployments, templates, autoscaling policies, and other Kthena resources.
+The Kthena CLI provides kubectl‑style commands for managing AI inference workloads on Kubernetes, featuring quick deployment via curated templates and optional integration with kubectl‑ai for natural‑language command generation.
 
 This document is divided into two parts:
 
