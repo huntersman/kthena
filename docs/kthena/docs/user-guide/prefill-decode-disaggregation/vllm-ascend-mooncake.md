@@ -3,6 +3,8 @@
 This page describes the prefill-decode disaggregation capabilities in Kthena, based on verified NPU deployment
 examples and configurations using Huawei Ascend Neural Processing Units.
 
+## Overview
+
 ### Disaggregation Components
 
 The prefill-decode disaggregation architecture consists of several key components optimized for NPU deployments:
@@ -39,9 +41,7 @@ The prefill-decode disaggregation architecture consists of several key component
 4. **Decode Phase:** Output tokens are generated sequentially
 5. **Response Delivery:** Generated text is returned to the client
 
-## Preparation
-
-### Prerequisites
+## Prerequisites
 
 - Kubernetes cluster with Kthena installed
 - **NPU Hardware**: Huawei Ascend NPU-enabled nodes (Ascend 910 or compatible NPUs)
@@ -52,12 +52,12 @@ The prefill-decode disaggregation architecture consists of several key component
 - Understanding of LLM inference patterns and NPU resource requirements
 - Familiarity with NPU-specific configurations and resource allocation
 
-### Getting Started
+## Getting Started
 
 Deploy LLM inference engine with prefill-decode disaggregation using either the ModelBooster or ModelServing approach.
 Both configurations separate prefill and decode workloads for optimal NPU resource utilization on Huawei Ascend hardware.
 
-#### ModelBooster Approach (Recommended)
+### ModelBooster Approach (Recommended)
 
 The ModelBooster CRD provides a streamlined way to deploy disaggregated inference with built-in support for advanced
 features like KV cache transfer and specialized NPU hardware configurations optimized for Huawei Ascend processors.
@@ -80,7 +80,7 @@ This configuration includes:
 - **HCCL Integration**: Huawei Collective Communication Library for NPU-to-NPU communication
 - **Mooncake Connector**: Optimized KV transfer mechanism for NPU deployments
 
-##### Verifying ModelBooster Deployment
+#### Verifying ModelBooster Deployment
 
 You can run the following command to check the ModelBooster status and pod status in the cluster:
 
@@ -115,7 +115,7 @@ deepseek-v2-lite-deepseek-v2-lite-0-prefill-0-0   2/2     Running    0          
 
 **Note:** ModelBooster creates a ModelServing resource named `{modelbooster-name}-{backend-name}`. The pods are labeled with `modelserving.volcano.sh/name={modelserving-name}`.
 
-#### ModelServing Approach (Alternative)
+### ModelServing Approach (Alternative)
 
 For environments that require more granular control over the NPU deployment configuration, you can use the ModelServing
 approach with fine-tuned NPU resource specifications and Ascend-specific optimizations.
@@ -128,7 +128,7 @@ For a detailed comparison of the ModelServing approach's advantages, manually cr
 2. **ModelServer** - Manages networking layer and inter-service communication
 3. **ModelRoute** - Provides request routing functionality
 
-##### 1. ModelServing Configuration
+#### 1. ModelServing Configuration
 
 First, create the ModelServing resource to manage prefill and decode workloads using the [ModelServing configuration](../../assets/examples/model-serving/prefill-decode-disaggregation.yaml):
 
@@ -143,7 +143,7 @@ This configuration includes:
 - **HCCL Network Configuration**: Environment variables for Huawei Collective Communication Library
 - **Volume Mounts**: Shared model storage and NPU configuration files
 
-##### 2. ModelServer Configuration
+#### 2. ModelServer Configuration
 
 Create the ModelServer resource to manage the networking layer for disaggregated inference, providing load balancing and
 traffic management between prefill and decode services using the [ModelServer configuration](../../assets/examples/kthena-router/ModelServer-prefill-decode-disaggregation.yaml):
@@ -158,7 +158,7 @@ This configuration includes:
 - **KV Connector Integration**: Uses nixl connector for efficient KV cache transfer
 - **Traffic Policy**: Optimized timeout settings for NPU workloads
 
-##### 3. ModelRoute Configuration
+#### 3. ModelRoute Configuration
 
 Create the ModelRoute resource to provide routing functionality, directing requests to the appropriate model server using the [ModelRoute configuration](../../assets/examples/kthena-router/ModelRoute-prefill-decode-disaggregation.yaml):
 
@@ -171,7 +171,7 @@ This configuration includes:
 - **Default Routing Rule**: Directs all requests to the ModelServer managing NPU workloads
 - **Target Model Integration**: Connects to the ModelServer with NPU-optimized prefill-decode disaggregation
 
-##### ModelServing Deployment Steps
+#### ModelServing Deployment Steps
 
 When using the ModelServing approach, create resources in the following order:
 
@@ -186,7 +186,7 @@ kubectl apply -f examples/kthena-router/ModelServer-prefill-decode-disaggregatio
 kubectl apply -f examples/kthena-router/ModelRoute-prefill-decode-disaggregation.yaml
 ```
 
-##### Verifying ModelServing Deployment
+#### Verifying ModelServing Deployment
 
 ```sh
 kubectl get modelserving deepseek-v2-lite -n dev -o yaml | grep status -A 10
