@@ -5,7 +5,7 @@ The Kthena CLI provides kubectl‑style commands for managing AI inference workl
 This document is divided into two parts:
 
 1. **[Using the Kthena CLI](#using-the-kthena-cli)** – How to install and use the CLI directly.
-2. **[Integrating with kubectl‑ai](#integrating-with-kubectl-ai)** – How to enable AI‑powered command generation with kubectl‑ai.
+2. **[Integrating with kubectl‑ai](#integrating-with-kubectlai)** – How to enable AI‑powered command generation with kubectl‑ai.
 
 ## Using the Kthena CLI
 
