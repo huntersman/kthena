@@ -277,7 +277,7 @@ jobs:
             echo "archive_path=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_ENV
           fi
 
-      - name: Upload CLI artifact
+      - name: Upload CLI Binary
         if: ${{ needs.setup.outputs.is_tag == 'true' }}
         uses: actions/upload-artifact@v4
         with:
@@ -332,16 +332,16 @@ jobs:
           LOWER_REPO_OWNER=$(echo "$REPO_OWNER" | tr '[:upper:]' '[:lower:]')
           helm push kthena.tgz oci://ghcr.io/$LOWER_REPO_OWNER/charts
 
-      - name: Prepare Release Artifacts
+      - name: Prepare Helm Release Artifacts
         if: needs.setup.outputs.is_tag == 'true'
         run: |
           helm template kthena ./charts/kthena --namespace kthena-system --include-crds > kthena-install.yaml
 
-      - name: Upload Release Artifacts
+      - name: Upload Helm Release Artifacts
         if: needs.setup.outputs.is_tag == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: release-artifacts
+          name: helm-release-artifacts
           path: |
             ./kthena.tgz
             ./kthena-install.yaml
@@ -353,12 +353,12 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
     steps:
-      - name: Download Release Artifacts
+      - name: Download Helm Release Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-artifacts
+          name: helm-release-artifacts
 
-      - name: Download CLI artifacts
+      - name: Download CLI Binaries
         uses: actions/download-artifact@v4
         with:
           path: ./cli-binaries
