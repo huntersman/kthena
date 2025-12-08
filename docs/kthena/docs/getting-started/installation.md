@@ -122,5 +122,5 @@ If you need gang scheduling capabilities, you can install Volcano by following t
 Kthena includes a command‑line interface (`kthena`) for managing AI inference workloads. You can use it directly to create, inspect, and manage model deployments, templates, autoscaling policies, and other Kthena resources.
 
 - **Download**: Get the latest binary from the [GitHub release page](https://github.com/volcano-sh/kthena/releases/).
-- **Documentation**: See the [CLI reference](../reference/cli/kthena.md) for a complete command listing.
-- **AI‑powered usage**: The CLI can be integrated with [kubectl‑ai](https://github.com/GoogleCloudPlatform/kubectl‑ai) to generate commands from natural‑language prompts. Refer to the [kubectl‑ai integration guide](../reference/kthena_cli.md#Integrating-with-kubectlai) for setup details.
+- **Documentation**: See the [CLI reference](../reference/kthena-cli/kthena.md) for a complete command listing.
+- **AI‑powered usage**: The CLI can be integrated with [kubectl‑ai](https://github.com/GoogleCloudPlatform/kubectl‑ai) to generate commands from natural‑language prompts. Refer to the [kubectl‑ai integration guide](../reference/kthena-cli.md#Integrating-with-kubectlai) for setup details.

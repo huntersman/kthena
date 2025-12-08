@@ -19,10 +19,10 @@ The Kthena CLI offers a set of subcommands for managing AI inference workloads:
 
 Each subcommand supports additional resource‑specific operations. For a complete reference, see the dedicated documentation:
 
-- [kthena](cli/kthena.md) – General CLI overview and global options
-- [kthena get](cli/kthena_get.md) – Display resources
-- [kthena create](cli/kthena_create.md) – Create resources
-- [kthena describe](cli/kthena_describe.md) – Describe resources
+- [kthena](kthena-cli/kthena.md) – General CLI overview and global options
+- [kthena get](kthena-cli/kthena_get.md) – Display resources
+- [kthena create](kthena-cli/kthena_create.md) – Create resources
+- [kthena describe](kthena-cli/kthena_describe.md) – Describe resources
 
 ### Installation
 

@@ -334,4 +334,4 @@ The Kthena Autoscaler provides powerful, flexible autoscaling capabilities for y
 - **Role-Level Scaling**: Sub target specific roles within `ModelServing` resources for granular control
 - **Custom Metrics**: Configure custom metric endpoints for specialized monitoring needs
 
-For more advanced configurations and use cases, refer to the [Kthena CLI reference](../reference/cli/kthena.md) and [CRD documentation](../reference/crd/workload.serving.volcano.sh.md).
+For more advanced configurations and use cases, refer to the [Kthena CLI reference](../reference/kthena-cli/kthena.md) and [CRD documentation](../reference/crd/workload.serving.volcano.sh.md).

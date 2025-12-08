@@ -36,7 +36,7 @@ func main() {
 
 	// Define output directory relative to the project root (assumes running from repo root)
 	// Target: docs/kthena/docs/reference/cli
-	outputDir := "docs/kthena/docs/reference/cli"
+	outputDir := "docs/kthena/docs/reference/kthena-cli"
 
 	// Clear existing documentation files to avoid outdated docs
 	if err := clearDirectory(outputDir); err != nil {
