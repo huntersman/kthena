@@ -108,9 +108,6 @@ func (m *Manager) managePodGroups(ctx context.Context, mi *workloadv1alpha1.Mode
 		}
 	}
 
-	// Clean up excess PodGroups
-	// As insurance
-	// return m.cleanupExcessPodGroups(ctx, mi, existingPodGroups, expectedReplicas)
 	return nil
 }
 
@@ -176,6 +173,10 @@ func (m *Manager) calculateRequirements(mi *workloadv1alpha1.ModelServing, podGr
 		roleReplicas := int(*role.Replicas)
 		minRoleReplicas := roleReplicas // Default to all replicas
 
+		if mi.Spec.Template.GangPolicy == nil {
+			return minMember, minTaskMember, minResources
+		}
+
 		if mi.Spec.Template.GangPolicy.MinRoleReplicas != nil {
 			if minReplicas, exists := mi.Spec.Template.GangPolicy.MinRoleReplicas[role.Name]; exists {
 				minRoleReplicas = int(minReplicas)
@@ -235,11 +236,6 @@ func (m *Manager) aggregateResources(total *corev1.ResourceList, podSpec *corev1
 			}
 		}
 	}
-}
-
-// generatePodGroupName generates PodGroup name for group-level scheduling
-func (m *Manager) generatePodGroupName(modelServingName string, groupIndex int) string {
-	return fmt.Sprintf("%s-%d", modelServingName, groupIndex)
 }
 
 // GenerateTaskName generates task name for MinTaskMember
@@ -302,31 +298,6 @@ func (m *Manager) DeletePodGroupWhenServingGroupDeleted(ctx context.Context, mi 
 	return nil
 }
 
-// cleanupExcessPodGroups cleans up excess PodGroups
-func (m *Manager) cleanupExcessPodGroups(ctx context.Context, mi *workloadv1alpha1.ModelServing, existingPodGroups map[string]*schedulingv1beta1.PodGroup, expectedReplicas int) error {
-	for podGroupName, podGroup := range existingPodGroups {
-		// Check if this PodGroup is still needed
-		isNeeded := false
-		for i := 0; i < expectedReplicas; i++ {
-			expectedName := m.generatePodGroupName(mi.Name, i)
-			if podGroupName == expectedName {
-				isNeeded = true
-				break
-			}
-		}
-
-		if !isNeeded {
-			err := m.volcanoClient.SchedulingV1beta1().PodGroups(mi.Namespace).Delete(ctx, podGroup.Name, metav1.DeleteOptions{})
-			if err != nil && !apierrors.IsNotFound(err) {
-				return fmt.Errorf("failed to delete excess PodGroup %s: %v", podGroup.Name, err)
-			}
-			klog.V(2).Infof("Deleted excess PodGroup %s", podGroup.Name)
-		}
-	}
-
-	return nil
-}
-
 // cleanupPodGroups cleans up all PodGroups for a ModelServing
 func (m *Manager) CleanupPodGroups(ctx context.Context, mi *workloadv1alpha1.ModelServing) error {
 	existingPodGroups, err := m.getExistingPodGroups(ctx, mi)
@@ -374,23 +345,17 @@ func neededHandledPodGroupNameList(expectedReplicas int, mi *workloadv1alpha1.Mo
 	// During binpack scale down, it is unknown which ServingGroup will be deleted.
 	// Therefore, return all podGroup names that exist.
 	// Deletion of PodGroups is handled when ServingGroups are deleted.
-	podGroupNameListlength := max(expectedReplicas, len(servingGroupNameList))
-
 	maxIndex := -1
-	validatCount := 0
-	nameList := make([]string, 0, podGroupNameListlength)
+	nameList := make([]string, 0)
 	for _, group := range servingGroupNameList {
 		_, index := utils.GetParentNameAndOrdinal(group.Name)
-		if index >= 0 {
-			nameList = append(nameList, group.Name)
-			validatCount++
-			if index > maxIndex {
-				maxIndex = index
-			}
+		nameList = append(nameList, group.Name)
+		if index > maxIndex {
+			maxIndex = index
 		}
 	}
 
-	toCreate := expectedReplicas - validatCount
+	toCreate := expectedReplicas - len(nameList)
 	// Scale down. After the deletion of the servingGroup is completed, proceed to delete the PodGroup.
 	if toCreate <= 0 {
 		return nameList
@@ -408,22 +373,18 @@ func neededHandledPodGroupNameList(expectedReplicas int, mi *workloadv1alpha1.Mo
 // Or the Role update scenario. (This scenario is This scenario is relatively rare. Since it is not permitted to modify an already configured gangPolicy,
 // and in practical applications, the workerReplicas within a deployed role are rarely altered.)
 func needHandledRoleNameList(expectedReplicas int, existRoleList []datastore.Role, roleName string) []string {
-	scaleUpRoleNameList := make([]string, 0, expectedReplicas)
+	scaleUpRoleNameList := make([]string, 0)
 
 	maxIndex := -1
-	validaCount := 0
 	for _, role := range existRoleList {
 		_, index := utils.GetParentNameAndOrdinal(role.Name)
-		if index >= 0 {
-			validaCount++
-			scaleUpRoleNameList = append(scaleUpRoleNameList, role.Name)
-			if index > maxIndex {
-				maxIndex = index
-			}
+		scaleUpRoleNameList = append(scaleUpRoleNameList, role.Name)
+		if index > maxIndex {
+			maxIndex = index
 		}
 	}
 
-	toCreate := expectedReplicas - validaCount
+	toCreate := expectedReplicas - len(scaleUpRoleNameList)
 	if toCreate <= 0 {
 		return scaleUpRoleNameList
 	}
