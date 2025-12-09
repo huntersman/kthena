@@ -321,7 +321,7 @@ func mapWorkers(workers []workload.ModelWorker) map[workload.ModelWorkerType]*wo
 // buildCommands constructs the command list for the backend.
 func buildCommands(workerConfig *apiextensionsv1.JSON, modelDownloadPath string,
 	workersMap map[workload.ModelWorkerType]*workload.ModelWorker) ([]string, error) {
-	commands := []string{"python", "-m", "vllm.entrypoints.openai.api_server", "--model", modelDownloadPath}
+	commands := []string{"python3", "-m", "vllm.entrypoints.openai.api_server", "--model", modelDownloadPath}
 	args, err := utils.ConvertVLLMArgsFromJson(workerConfig)
 	commands = append(commands, args...)
 	if workersMap[workload.ModelWorkerTypeServer] != nil && workersMap[workload.ModelWorkerTypeServer].Pods > 1 {
