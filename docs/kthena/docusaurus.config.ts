@@ -9,7 +9,7 @@ import rehypeKatex from 'rehype-katex';
 const config: Config = {
   title: 'Kthena',
   tagline: 'Kubernetes-native AI serving platform for scalable model serving',
-  favicon: 'img/favicon.ico',
+  favicon: 'img/kthena-logo/icon/colour/kthena-icon-color.svg',
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
   future: {
@@ -108,12 +108,12 @@ const config: Config = {
 
   themeConfig: {
     // Replace with your project's social card
-    image: 'img/volcano-logo.svg',
+    image: 'img/kthena-logo/horizontal/colour/Kthena-horizontal-color.svg',
     navbar: {
       title: 'Kthena',
       logo: {
         alt: 'Kthena Logo',
-        src: 'img/volcano-logo.png',
+        src: 'img/kthena-logo/icon/colour/kthena-icon-color.svg',
       },
       items: [
         {

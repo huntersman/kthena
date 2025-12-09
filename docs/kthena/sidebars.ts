@@ -84,6 +84,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Developer Guide',
       items: [
+        'developer-guide/development-setup',
         'developer-guide/release',
         'developer-guide/model-serving-rolling-update',
         'developer-guide/ci',
