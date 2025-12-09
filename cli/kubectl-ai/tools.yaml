@@ -30,8 +30,8 @@
     Available templates include:
     - deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
     - deepseek-ai/DeepSeek-R1-Distill-Qwen-32B
-    - Qwen/wen3-8B
-    - Qwen/wen3-32B
+    - Qwen/Qwen3-8B
+    - Qwen/Qwen3-32B
     
     ## Key Parameters for create manifest
     - `--template`: Template name (required)

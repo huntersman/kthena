@@ -150,7 +150,7 @@ You can merge Kthena’s tool definition with other custom tools by editing `too
 
 ## Further Reading
 
-- [Kthena CLI Documentation](https://kthena.volcano.sh/docs/reference/cli/kthena) – Complete reference for `kthena` commands and flags.
+- [Kthena CLI Documentation](kthena-cli/kthena) – Complete reference for `kthena` commands and flags.
 - [kubectl‑ai GitHub Repository](https://github.com/GoogleCloudPlatform/kubectl‑ai) – Official source, installation, and advanced usage.
 - [Kthena Project](https://github.com/volcano-sh/kthena) – Main repository with architecture, examples, and contributing guidelines.
 
