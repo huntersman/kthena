@@ -22,11 +22,13 @@ spec:
       scaleToZeroGracePeriod: {{ .Values.scaleToZeroGracePeriod | default "60s" | quote }}
       workers:
         - type: {{ .Values.workerType | default "server" | quote }}
-          image: {{ .Values.workerImage | default "vllm/vllm-openai:v0.7.1" | quote }}
+          image: {{ .Values.workerImage | default "vllm/vllm-openai:latest" | quote }}
           replicas: {{ .Values.workerReplicas | default 1 }}
           pods: {{ .Values.workerPods | default 1 }}
           config:
             served-model-name: {{ .Values.modelName | default .Values.name | default "qwen3-8b" | quote }}
+            tensor-parallel-size: {{ .Values.tensorParallelSize | default 2 }}
+            enforce-eager: ""  # Enable PyTorch eager mode if GPU compute capability is below 8.0
           resources:
             limits:
               nvidia.com/gpu: {{ .Values.gpuLimit | default "2" | quote }}
