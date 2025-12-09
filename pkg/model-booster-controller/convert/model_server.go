@@ -135,6 +135,9 @@ func getKvConnectorSpec(backend workload.ModelBackend) (*networking.KVConnectorS
 	}
 
 	if foundConfig {
+		if connectorType == nil {
+			return nil, fmt.Errorf("kv connector type found but nil")
+		}
 		return &networking.KVConnectorSpec{Type: *connectorType}, nil
 	}
 	return nil, nil

@@ -92,10 +92,6 @@ type ModelBackend struct {
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=1000000
 	MaxReplicas int32 `json:"maxReplicas"`
-	// ScalingCost is the cost associated with running this backend.
-	// +kubebuilder:validation:Minimum=0
-	// +optional
-	ScalingCost int32 `json:"scalingCost,omitempty"`
 	// Workers is the list of workers associated with this backend.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=1000

@@ -464,12 +464,6 @@ spec:
                       Note: update name will cause the old modelInfer deletion and a new modelInfer creation.
                     pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
-                  scalingCost:
-                    description: ScalingCost is the cost associated with running this
-                      backend.
-                    format: int32
-                    minimum: 0
-                    type: integer
                   schedulerName:
                     description: SchedulerName defines the name of the scheduler used
                       by ModelServing for this backend.
