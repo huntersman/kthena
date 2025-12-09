@@ -798,9 +798,9 @@ func TestNeedHandledRoleNameList(t *testing.T) {
 			roleName: "test-role",
 			expectedResult: []string{
 				utils.GenerateRoleID("test-role", 0),
-				utils.GenerateRoleID("test-role", 1),
 				utils.GenerateRoleID("test-role", 2),
 				utils.GenerateRoleID("test-role", 3),
+				utils.GenerateRoleID("test-role", 4),
 			},
 		},
 		{
@@ -814,7 +814,7 @@ func TestNeedHandledRoleNameList(t *testing.T) {
 			expectedResult: []string{
 				utils.GenerateRoleID("test-role", 10),
 				utils.GenerateRoleID("test-role", 11),
-				utils.GenerateRoleID("test-role", 0),
+				utils.GenerateRoleID("test-role", 12),
 			},
 		},
 	}
@@ -914,10 +914,10 @@ func TestNeededHandledPodGroupNameList(t *testing.T) {
 			},
 			expectedResult: []string{
 				utils.GenerateServingGroupName("test-model", 0),
-				utils.GenerateServingGroupName("test-model", 1),
 				utils.GenerateServingGroupName("test-model", 2),
-				utils.GenerateServingGroupName("test-model", 3),
 				utils.GenerateServingGroupName("test-model", 4),
+				utils.GenerateServingGroupName("test-model", 5),
+				utils.GenerateServingGroupName("test-model", 6),
 			},
 		},
 	}
