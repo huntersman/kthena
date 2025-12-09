@@ -370,8 +370,6 @@ jobs:
         with:
           prerelease: ${{ needs.setup.outputs.prerelease }}
           body: |
-            ## Release ${{ needs.setup.outputs.version }}
-
             This release includes the following artifacts:
 
             - **Helm Chart**: `kthena.tgz` (OCI artifact pushed to GHCR)
