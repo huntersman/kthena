@@ -1,4 +1,4 @@
-# Prepare for Development
+# Development Setup
 
 This document helps you get started developing code for kthena.
 If you follow this guide and find some problem, please take
@@ -6,12 +6,6 @@ a few minutes to update this file.
 
 Kthena components only have few external dependencies you
 need to set up before being able to build and run the code.
-
-- [Prepare for Development](#prepare-for-development)
-  - [Setting up Go](#setting-up-go)
-  - [Setting up Docker](#setting-up-docker)
-  - [Setting up Kubernetes](#setting-up-kubernetes)
-  - [Setting up a personal access token](#setting-up-a-personal-access-token)
 
 ## Setting up Go
 
