@@ -165,7 +165,7 @@ jobs:
 
   # merge images: Create Multi-Arch Manifests
   merge_images:
-    needs: build_images
+    needs: [ setup, build_images ]
     runs-on: ubuntu-latest
     if: ${{ github.event_name != 'pull_request' }}
     strategy:
