@@ -58,9 +58,9 @@ const sidebars: SidebarsConfig = {
             'user-guide/router-routing',
             'user-guide/config-router',
             'user-guide/rate-limit',
+            'user-guide/gateway-inference-extension-support',
           ],
         },
-        'user-guide/gateway-inference-extension-support',
         'user-guide/runtime',
         {
           type: 'category',
