@@ -36,3 +36,4 @@ spec:
       retryInterval: 0s
   kvConnector:
     type: mooncake
+  

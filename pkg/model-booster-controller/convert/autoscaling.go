@@ -22,7 +22,6 @@ import (
 	icUtils "github.com/volcano-sh/kthena/pkg/model-serving-controller/utils"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog/v2"
 )
 
 func BuildAutoscalingPolicy(autoscalingConfig *workload.AutoscalingPolicySpec, model *workload.ModelBooster, backendName string) *workload.AutoscalingPolicy {
@@ -87,56 +86,6 @@ func BuildScalingPolicyBinding(model *workload.ModelBooster, backend *workload.M
 			Kind:       workload.AutoscalingPolicyBindingKind.Kind,
 		},
 		ObjectMeta: *BuildPolicyBindingMeta(spec, model, backend.Name, name),
-		Spec:       *spec,
-	}
-}
-
-func BuildOptimizePolicyBindingSpec(model *workload.ModelBooster, name string) *workload.AutoscalingPolicyBindingSpec {
-	params := make([]workload.HeterogeneousTargetParam, 0, len(model.Spec.Backends))
-	if model.Spec.CostExpansionRatePercent == nil {
-		klog.Error("ModelBooster", model.Name, "Spec.CostExpansionRatePercent can not be nil when set optimize autoscaling policy")
-		return nil
-	}
-	for _, backend := range model.Spec.Backends {
-		targetName := utils.GetBackendResourceName(model.Name, backend.Name)
-		params = append(params, workload.HeterogeneousTargetParam{
-			Target: workload.Target{
-				TargetRef: corev1.ObjectReference{
-					Name: targetName,
-					Kind: workload.ModelServingKind.Kind,
-				},
-				MetricEndpoint: workload.MetricEndpoint{
-					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							workload.RoleLabelKey: workload.ModelServingEntryPodLeaderLabel,
-						},
-					},
-				},
-			},
-			MinReplicas: backend.MinReplicas,
-			MaxReplicas: backend.MaxReplicas,
-			Cost:        backend.ScalingCost,
-		})
-	}
-	return &workload.AutoscalingPolicyBindingSpec{
-		HeterogeneousTarget: &workload.HeterogeneousTarget{
-			Params:                   params,
-			CostExpansionRatePercent: *model.Spec.CostExpansionRatePercent,
-		},
-		PolicyRef: corev1.LocalObjectReference{
-			Name: name,
-		},
-	}
-}
-
-func BuildOptimizePolicyBinding(model *workload.ModelBooster, name string) *workload.AutoscalingPolicyBinding {
-	spec := BuildOptimizePolicyBindingSpec(model, name)
-	return &workload.AutoscalingPolicyBinding{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: workload.AutoscalingPolicyBindingKind.GroupVersion().String(),
-			Kind:       workload.AutoscalingPolicyBindingKind.Kind,
-		},
-		ObjectMeta: *BuildPolicyBindingMeta(spec, model, "", name),
 		Spec:       *spec,
 	}
 }

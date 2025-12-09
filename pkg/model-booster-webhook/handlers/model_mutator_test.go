@@ -24,71 +24,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestCreatePatch(t *testing.T) {
-	// Create an original model
-	original := &v1alpha1.ModelBooster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-model",
-			Namespace: "default",
-		},
-		Spec: v1alpha1.ModelBoosterSpec{
-			AutoscalingPolicy: &v1alpha1.AutoscalingPolicySpec{},
-			Backends: []v1alpha1.ModelBackend{
-				{
-					Name:        "backend1",
-					Type:        "vLLM",
-					ModelURI:    "hf://test/model",
-					MinReplicas: 1,
-					MaxReplicas: 10,
-					Workers: []v1alpha1.ModelWorker{
-						{
-							Type:     "server",
-							Image:    "test-image",
-							Replicas: 1,
-						},
-					},
-				},
-			},
-		},
-	}
-
-	// Create a mutated model and apply the actual mutations
-	mutated := original.DeepCopy()
-
-	mutator := NewModelMutator() // No parameters needed since mutateModel doesn't use client
-	mutator.mutateModel(mutated)
-
-	// Test the createPatch function
-	patch, err := createPatch(original, mutated)
-	if err != nil {
-		t.Fatalf("Error creating patch: %v", err)
-	}
-
-	// Verify that we got a valid patch
-	if len(patch) == 0 {
-		t.Fatal("Expected non-empty patch")
-	}
-
-	// Parse the patch to verify it's valid JSON
-	var patchObj []interface{}
-	t.Logf("patch: %v", patch)
-	if err := json.Unmarshal(patch, &patchObj); err != nil {
-		t.Fatalf("Error unmarshaling patch: %v", err)
-	}
-
-	// Verify that we have patch operations
-	if len(patchObj) == 0 {
-		t.Fatal("Expected patch operations")
-	}
-
-	t.Logf("Patch created successfully with %d operations", len(patchObj))
-
-	// Log the patch for debugging
-	for i, op := range patchObj {
-		t.Logf("Operation %d: %+v", i+1, op)
-	}
-}
-
 func TestCreatePatchNoChanges(t *testing.T) {
 	// Create a model
 	original := &v1alpha1.ModelBooster{
@@ -97,19 +32,17 @@ func TestCreatePatchNoChanges(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: v1alpha1.ModelBoosterSpec{
-			Backends: []v1alpha1.ModelBackend{
-				{
-					Name:        "backend1",
-					Type:        "vLLM",
-					ModelURI:    "hf://test/model",
-					MinReplicas: 1,
-					MaxReplicas: 10,
-					Workers: []v1alpha1.ModelWorker{
-						{
-							Type:     "server",
-							Image:    "test-image",
-							Replicas: 1,
-						},
+			Backend: v1alpha1.ModelBackend{
+				Name:        "backend1",
+				Type:        "vLLM",
+				ModelURI:    "hf://test/model",
+				MinReplicas: 1,
+				MaxReplicas: 10,
+				Workers: []v1alpha1.ModelWorker{
+					{
+						Type:     "server",
+						Image:    "test-image",
+						Replicas: 1,
 					},
 				},
 			},

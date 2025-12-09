@@ -28,30 +28,16 @@ import (
 )
 
 func (mc *ModelBoosterController) createOrUpdateAutoscalingPolicyAndBinding(ctx context.Context, model *v1alpha1.ModelBooster) error {
+	// Create autoscaling policy and scaling policy binding for single backend
 	if model.Spec.AutoscalingPolicy != nil {
-		// Create autoscaling policy and optimize policy binding
-		asp := convert.BuildAutoscalingPolicy(model.Spec.AutoscalingPolicy, model, "")
-		aspBinding := convert.BuildOptimizePolicyBinding(model, utils.GetBackendResourceName(model.Name, ""))
+		backend := model.Spec.Backend
+		asp := convert.BuildAutoscalingPolicy(model.Spec.AutoscalingPolicy, model, backend.Name)
+		aspBinding := convert.BuildScalingPolicyBinding(model, &backend, utils.GetBackendResourceName(model.Name, backend.Name))
 		if err := mc.createOrUpdateAsp(ctx, asp); err != nil {
 			return err
 		}
 		if err := mc.createOrUpdateAspBinding(ctx, aspBinding); err != nil {
 			return err
-		}
-	} else {
-		// Create autoscaling policy and scaling policy binding
-		for _, backend := range model.Spec.Backends {
-			if backend.AutoscalingPolicy == nil {
-				continue
-			}
-			asp := convert.BuildAutoscalingPolicy(backend.AutoscalingPolicy, model, backend.Name)
-			aspBinding := convert.BuildScalingPolicyBinding(model, &backend, utils.GetBackendResourceName(model.Name, backend.Name))
-			if err := mc.createOrUpdateAsp(ctx, asp); err != nil {
-				return err
-			}
-			if err := mc.createOrUpdateAspBinding(ctx, aspBinding); err != nil {
-				return err
-			}
 		}
 	}
 	return nil
