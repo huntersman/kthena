@@ -69,11 +69,64 @@ By adding Kthena as a custom tool, you enable kubectl‑ai to perform advanced A
    See the [Installation Guide](../getting-started/installation.md#kthena-cli).
 
 3. **Place the Kthena tool configuration**  
-   By default, kubectl‑ai looks for tool configurations in `~/.config/kubectl‑ai/tools.yaml`. Copy the provided [`tools.yaml`](../../../../cli/kubectl-ai/tools.yaml) to that location:
-   ```bash
-   mkdir -p ~/.config/kubectl-ai
-   cp cli/kubectl-ai/tools.yaml ~/.config/kubectl-ai/
-   ```
+    By default, kubectl‑ai looks for tool configurations in `~/.config/kubectl‑ai/tools.yaml`. Copy the following tools.yaml content to that location:
+
+    <details>
+    <summary>
+    <b>tools.yaml</b>
+    </summary>
+    
+    ```yaml
+    - name: kthena
+      description: "A CLI tool for managing Kthena AI inference workloads in Kubernetes clusters. Use it to create, manage, and monitor AI model deployments."
+      command: "kthena"
+      command_desc: |
+        The kthena command-line interface for AI inference workload management.
+    
+        For detailed documentation and advanced usage examples, visit https://kthena.volcano.sh/
+      
+        Core subcommands and usage patterns:
+      
+        ## Template Management
+          - `kthena get templates`: List all available model deployment templates
+          - `kthena describe template <template-name>`: Show detailed template content and parameters
+          - `kthena get template <template-name> -o yaml`: Get template in YAML format
+      
+        ## Creating Model Deployments
+          - `kthena create manifest --template <template> --name <name>`: Create and deploy a model from template
+          - `kthena create manifest --template <template> --name <name> --dry-run`: Preview template rendering without applying
+          - `kthena create manifest --template <template> --values-file values.yaml`: Create with custom values from file
+          - `kthena create manifest --template <template> --name <name> --set key1=value1,key2=value2`: Set template values directly
+      
+        ## Resource Management
+          - `kthena get model-boosters`: List registered models (requires Kubernetes connection)
+          - `kthena get model-servings`: List model serving workloads (requires Kubernetes connection)
+          - `kthena get autoscaling-policies`: List autoscaling policies
+          - `kthena describe model-booster <name>`: Show detailed model information
+          - `kthena describe model-serving <name>`: Show detailed serving workload information
+      
+        ## Common Templates
+        Available templates include:
+          - deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+          - deepseek-ai/DeepSeek-R1-Distill-Qwen-32B
+          - Qwen/Qwen3-8B
+          - Qwen/Qwen3-32B
+      
+        ## Key Parameters for create manifest
+          - `--template`: Template name (required)
+          - `--name`: Name for the inference workload
+          - `--namespace`: Kubernetes namespace (default: default)
+          - `--dry-run`: Preview without applying
+          - `--set`: Set template values (key=value pairs)
+          - `--values-file`: YAML file with template values
+      
+        Example workflow:
+          1. `kthena get templates` - Browse available models
+          2. `kthena describe template deepseek-ai/DeepSeek-R1-Distill-Qwen-32B` - View template details
+          3. `kthena create manifest --template deepseek-ai/DeepSeek-R1-Distill-Qwen-32B --name my-deepseek --dry-run` - Preview
+          4. `kthena create manifest --template deepseek-ai/DeepSeek-R1-Distill-Qwen-32B --name my-deepseek` - Deploy
+    ```
+    </details>
 
 4. **Start using kubectl‑ai with Kthena**  
    Run kubectl‑ai with a prompt that references Kthena operations:
@@ -83,7 +136,7 @@ By adding Kthena as a custom tool, you enable kubectl‑ai to perform advanced A
 
 ### Tool Configuration Explained
 
-The [`tools.yaml`](../../../../cli/kubectl-ai/tools.yaml) file defines how kubectl‑ai invokes the `kthena` command. It includes:
+The `tools.yaml` file defines how kubectl‑ai invokes the `kthena` command. It includes:
 
 - **Command description**: A detailed overview of Kthena’s capabilities and subcommands.
 - **Common usage patterns**: Examples for template management, creating deployments, and inspecting resources.
@@ -129,7 +182,7 @@ kubectl-ai "Describe the DeepSeek‑R1‑Distill‑Qwen‑7B template"
 #### Using a Custom Tools Configuration Path
 If you prefer not to use the default `~/.config/kubectl‑ai/tools.yaml`, you can specify a custom configuration file or directory with the `--custom‑tools‑config` flag:
 ```bash
-kubectl-ai --custom-tools-config=cli/kubectl-ai/tools.yaml "your prompt"
+kubectl-ai --custom-tools-config=tools.yaml "your prompt"
 ```
 
 #### Extending the Tools File

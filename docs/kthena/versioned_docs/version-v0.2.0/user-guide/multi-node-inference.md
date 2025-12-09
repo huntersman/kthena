@@ -92,8 +92,7 @@ graph TD
 
 Deploy the Llama LLM inference engine as shown below. The tensor parallel size is 8 and the pipeline parallel size is 2.
 
-```yaml showLineNumbers
-# multi-node.yaml
+```yaml showLineNumbers title="multi-node.yaml"
 apiVersion: workload.serving.volcano.sh/v1alpha1
 kind: ModelServing
 metadata:
@@ -179,7 +178,7 @@ spec:
 
 ### Tensor and Pipeline Parallelism Configuration
 
-The multi‑node example configures tensor parallelism and pipeline parallelism through the command‑line arguments of the inference engine. In the `multi‑node.yaml` manifest, the entry‑point container includes:
+The multi‑node example configures tensor parallelism and pipeline parallelism through the command‑line arguments of the inference engine. In the `multi-node.yaml` manifest, the entry‑point container includes:
 
 ```yaml
 command:
@@ -332,7 +331,7 @@ Kthena creates PodGroups based on the ModelServing. Among these, the important f
 
 The `MinRoleReplicas` map is translated directly into the PodGroup's `spec.minTaskMember` field. Each entry becomes a key‑value pair where the key is the role name and the value is the minimum number of pods that must be scheduled for that role before the gang can start.
 
-**Example:** In the `multi‑node.yaml` example, the gang policy is defined as:
+**Example:** In the `multi-node.yaml` example, the gang policy is defined as:
 
 ```yaml
 gangPolicy:
