@@ -40,11 +40,6 @@ type ModelBoosterSpec struct {
 	// AutoscalingPolicy references the autoscaling policy to be used for this model.
 	// +optional
 	AutoscalingPolicy *AutoscalingPolicySpec `json:"autoscalingPolicy,omitempty"`
-	// CostExpansionRatePercent is the percentage rate at which the cost expands.
-	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=1000
-	// +optional
-	CostExpansionRatePercent *int32 `json:"costExpansionRatePercent,omitempty"`
 	// ModelMatch defines the predicate used to match LLM inference requests to a given
 	// TargetModels. Multiple match conditions are ANDed together, i.e. the match will
 	// evaluate to true only if all conditions are satisfied.
@@ -101,16 +96,11 @@ type ModelBackend struct {
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	ScalingCost int32 `json:"scalingCost,omitempty"`
-	// ScaleToZeroGracePeriod is the duration to wait before scaling to zero.
-	// +optional
-	ScaleToZeroGracePeriod *metav1.Duration `json:"scaleToZeroGracePeriod,omitempty"`
 	// Workers is the list of workers associated with this backend.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=1000
 	Workers []ModelWorker `json:"workers"`
-	// AutoscalingPolicy references the autoscaling policy for this backend.
-	// +optional
-	AutoscalingPolicy *AutoscalingPolicySpec `json:"autoscalingPolicy,omitempty"`
+
 	// SchedulerName defines the name of the scheduler used by ModelServing for this backend.
 	// +optional
 	SchedulerName string `json:"schedulerName,omitempty"`

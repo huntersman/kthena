@@ -18,8 +18,6 @@ spec:
     cacheURI: {{ .Values.cacheURI | default "hostpath://mnt/cache" | quote }}
     minReplicas: {{ .Values.minReplicas | default 1 }}
     maxReplicas: {{ .Values.maxReplicas | default 3 }}
-    scalingCost: {{ .Values.scalingCost | default 1 }}
-    scaleToZeroGracePeriod: {{ .Values.scaleToZeroGracePeriod | default "60s" | quote }}
     workers:
       - type: {{ .Values.workerType | default "server" | quote }}
         image: {{ .Values.workerImage | default "vllm/vllm-openai:latest" | quote }}

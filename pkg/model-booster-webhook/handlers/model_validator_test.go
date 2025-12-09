@@ -36,14 +36,11 @@ func TestValidateModel_ErrorFormatting(t *testing.T) {
 		},
 		Spec: registryv1alpha1.ModelBoosterSpec{
 			// This will trigger validation errors for autoscaling-related fields
-			CostExpansionRatePercent: &[]int32{50}[0],
 			Backend: registryv1alpha1.ModelBackend{
-				Name:                   "backend1",
-				Type:                   registryv1alpha1.ModelBackendTypeVLLM,
-				MinReplicas:            1,
-				MaxReplicas:            3,
-				ScalingCost:            1,
-				ScaleToZeroGracePeriod: &metav1.Duration{Duration: 300},
+				Name:        "backend1",
+				Type:        registryv1alpha1.ModelBackendTypeVLLM,
+				MinReplicas: 1,
+				MaxReplicas: 3,
 				Workers: []registryv1alpha1.ModelWorker{
 					{
 						Type:  registryv1alpha1.ModelWorkerTypeServer,

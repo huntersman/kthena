@@ -67,12 +67,6 @@ func TestBuildAutoscalingPolicy(t *testing.T) {
 				actualYAML, _ := yaml.Marshal(got)
 				expectedYAML, _ := yaml.Marshal(tt.expected)
 				assert.Equal(t, string(expectedYAML), string(actualYAML))
-			} else {
-				backend := tt.input.Spec.Backend
-				if backend.AutoscalingPolicy != nil {
-					got := BuildAutoscalingPolicy(backend.AutoscalingPolicy, tt.input, "")
-					assert.Equal(t, tt.expected, got)
-				}
 			}
 		})
 	}

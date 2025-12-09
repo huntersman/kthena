@@ -25,12 +25,11 @@ import (
 // ModelBoosterSpecApplyConfiguration represents a declarative configuration of the ModelBoosterSpec type for use
 // with apply.
 type ModelBoosterSpecApplyConfiguration struct {
-	Name                     *string                                          `json:"name,omitempty"`
-	Owner                    *string                                          `json:"owner,omitempty"`
-	Backend                  *ModelBackendApplyConfiguration                  `json:"backend,omitempty"`
-	AutoscalingPolicy        *AutoscalingPolicySpecApplyConfiguration         `json:"autoscalingPolicy,omitempty"`
-	CostExpansionRatePercent *int32                                           `json:"costExpansionRatePercent,omitempty"`
-	ModelMatch               *networkingv1alpha1.ModelMatchApplyConfiguration `json:"modelMatch,omitempty"`
+	Name              *string                                          `json:"name,omitempty"`
+	Owner             *string                                          `json:"owner,omitempty"`
+	Backend           *ModelBackendApplyConfiguration                  `json:"backend,omitempty"`
+	AutoscalingPolicy *AutoscalingPolicySpecApplyConfiguration         `json:"autoscalingPolicy,omitempty"`
+	ModelMatch        *networkingv1alpha1.ModelMatchApplyConfiguration `json:"modelMatch,omitempty"`
 }
 
 // ModelBoosterSpecApplyConfiguration constructs a declarative configuration of the ModelBoosterSpec type for use with
@@ -68,14 +67,6 @@ func (b *ModelBoosterSpecApplyConfiguration) WithBackend(value *ModelBackendAppl
 // If called multiple times, the AutoscalingPolicy field is set to the value of the last call.
 func (b *ModelBoosterSpecApplyConfiguration) WithAutoscalingPolicy(value *AutoscalingPolicySpecApplyConfiguration) *ModelBoosterSpecApplyConfiguration {
 	b.AutoscalingPolicy = value
-	return b
-}
-
-// WithCostExpansionRatePercent sets the CostExpansionRatePercent field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the CostExpansionRatePercent field is set to the value of the last call.
-func (b *ModelBoosterSpecApplyConfiguration) WithCostExpansionRatePercent(value int32) *ModelBoosterSpecApplyConfiguration {
-	b.CostExpansionRatePercent = &value
 	return b
 }
 

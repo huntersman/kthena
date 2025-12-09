@@ -483,22 +483,12 @@ func (in *ModelBackend) DeepCopyInto(out *ModelBackend) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	if in.ScaleToZeroGracePeriod != nil {
-		in, out := &in.ScaleToZeroGracePeriod, &out.ScaleToZeroGracePeriod
-		*out = new(v1.Duration)
-		**out = **in
-	}
 	if in.Workers != nil {
 		in, out := &in.Workers, &out.Workers
 		*out = make([]ModelWorker, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
-	}
-	if in.AutoscalingPolicy != nil {
-		in, out := &in.AutoscalingPolicy, &out.AutoscalingPolicy
-		*out = new(AutoscalingPolicySpec)
-		(*in).DeepCopyInto(*out)
 	}
 }
 
@@ -579,11 +569,6 @@ func (in *ModelBoosterSpec) DeepCopyInto(out *ModelBoosterSpec) {
 		in, out := &in.AutoscalingPolicy, &out.AutoscalingPolicy
 		*out = new(AutoscalingPolicySpec)
 		(*in).DeepCopyInto(*out)
-	}
-	if in.CostExpansionRatePercent != nil {
-		in, out := &in.CostExpansionRatePercent, &out.CostExpansionRatePercent
-		*out = new(int32)
-		**out = **in
 	}
 	if in.ModelMatch != nil {
 		in, out := &in.ModelMatch, &out.ModelMatch

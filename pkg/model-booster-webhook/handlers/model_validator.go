@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	registryv1alpha1 "github.com/volcano-sh/kthena/pkg/apis/workload/v1alpha1"
 	admissionv1 "k8s.io/api/admission/v1"
@@ -78,7 +77,6 @@ func (v *ModelValidator) Handle(w http.ResponseWriter, r *http.Request) {
 func (v *ModelValidator) validateModel(model *registryv1alpha1.ModelBooster) (bool, string) {
 	var allErrs field.ErrorList
 
-	allErrs = append(allErrs, validateScaleToZeroGracePeriod(model)...)
 	allErrs = append(allErrs, validateBackendReplicaBounds(model)...)
 	allErrs = append(allErrs, validateWorkerImages(model)...)
 	allErrs = append(allErrs, validateAutoScalingPolicyScope(model)...)
@@ -175,31 +173,6 @@ func validateBackendReplicaBounds(model *registryv1alpha1.ModelBooster) field.Er
 	return allErrs
 }
 
-func validateScaleToZeroGracePeriod(model *registryv1alpha1.ModelBooster) field.ErrorList {
-	const maxScaleToZeroSeconds = 1800
-	var allErrs field.ErrorList
-	backend := model.Spec.Backend
-	if backend.ScaleToZeroGracePeriod == nil {
-		return allErrs
-	}
-	d := backend.ScaleToZeroGracePeriod.Duration
-	if d > time.Duration(maxScaleToZeroSeconds)*time.Second {
-		allErrs = append(allErrs, field.Invalid(
-			field.NewPath("spec").Child("backend").Child("scaleToZeroGracePeriod"),
-			d.String(),
-			fmt.Sprintf("scaleToZeroGracePeriod cannot exceed %d seconds", maxScaleToZeroSeconds),
-		))
-	}
-	if d < 0 {
-		allErrs = append(allErrs, field.Invalid(
-			field.NewPath("spec").Child("backend").Child("scaleToZeroGracePeriod"),
-			d.String(),
-			"scaleToZeroGracePeriod cannot be negative",
-		))
-	}
-	return allErrs
-}
-
 func validateWorkerImages(model *registryv1alpha1.ModelBooster) field.ErrorList {
 	var allErrs field.ErrorList
 	backend := model.Spec.Backend
@@ -256,65 +229,25 @@ func validateAutoScalingPolicyScope(model *registryv1alpha1.ModelBooster) field.
 				"cost must not be provided when model-level autoscaling is not set",
 			))
 		}
-		if backend.ScaleToZeroGracePeriod != nil {
-			allErrs = append(allErrs, field.Forbidden(
-				field.NewPath("spec").Child("backend").Child("scaleToZeroGracePeriod"),
-				"scaleToZeroGracePeriod must not be provided when model-level autoscaling is not set",
-			))
-		}
-		if backend.AutoscalingPolicy != nil && backend.MinReplicas < 1 {
+		if backend.MinReplicas != backend.MaxReplicas {
 			allErrs = append(allErrs, field.Invalid(
-				field.NewPath("spec").Child("backend").Child("minReplicas"),
-				backend.MinReplicas,
-				"minReplicas must be >= 1 when backend-level autoscaling is set",
-			))
-		}
-		if backend.AutoscalingPolicy == nil {
-			if backend.MinReplicas != backend.MaxReplicas {
-				allErrs = append(allErrs, field.Invalid(
-					field.NewPath("spec").Child("backend"),
-					fmt.Sprintf("minReplicas=%d, maxReplicas=%d", backend.MinReplicas, backend.MaxReplicas),
-					"minReplicas and maxReplicas must be equal and > 0 when no autoscaling is set",
-				))
-			}
-		}
-		if spec.CostExpansionRatePercent != nil {
-			allErrs = append(allErrs, field.Forbidden(
-				field.NewPath("spec").Child("costExpansionRatePercent"),
-				"costExpansionRatePercent must not be provided when model-level autoscaling is not set",
+				field.NewPath("spec").Child("backend"),
+				fmt.Sprintf("minReplicas=%d, maxReplicas=%d", backend.MinReplicas, backend.MaxReplicas),
+				"minReplicas and maxReplicas must be equal and > 0 when no autoscaling is set",
 			))
 		}
 	} else {
-		if backend.AutoscalingPolicy == nil {
-			if backend.MinReplicas < 0 {
-				allErrs = append(allErrs, field.Invalid(
-					field.NewPath("spec").Child("backend").Child("minReplicas"),
-					backend.MinReplicas,
-					"minReplicas must be >= 0 when model-level autoscaling is set",
-				))
-			}
-			if backend.ScalingCost == 0 {
-				allErrs = append(allErrs, field.Required(
-					field.NewPath("spec").Child("backend").Child("cost"),
-					"cost must be provided when model-level autoscaling is set",
-				))
-			}
-			if backend.ScaleToZeroGracePeriod == nil {
-				allErrs = append(allErrs, field.Required(
-					field.NewPath("spec").Child("backend").Child("scaleToZeroGracePeriod"),
-					"scaleToZeroGracePeriod must be provided when model-level autoscaling is set",
-				))
-			}
-			if spec.CostExpansionRatePercent == nil {
-				allErrs = append(allErrs, field.Required(
-					field.NewPath("spec").Child("costExpansionRatePercent"),
-					"costExpansionRatePercent must be provided and > 0 when model-level autoscaling is set",
-				))
-			}
-		} else {
-			allErrs = append(allErrs, field.Forbidden(
-				field.NewPath("spec").Child("autoscalingPolicyRef"),
-				"spec.autoscalingPolicyRef and spec.backend.autoscalingPolicyRef cannot both be set; choose model-level or backend-level autoscaling, not both",
+		if backend.MinReplicas < 0 {
+			allErrs = append(allErrs, field.Invalid(
+				field.NewPath("spec").Child("backend").Child("minReplicas"),
+				backend.MinReplicas,
+				"minReplicas must be >= 0 when model-level autoscaling is set",
+			))
+		}
+		if backend.ScalingCost == 0 {
+			allErrs = append(allErrs, field.Required(
+				field.NewPath("spec").Child("backend").Child("cost"),
+				"cost must be provided when model-level autoscaling is set",
 			))
 		}
 	}

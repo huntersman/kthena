@@ -18,8 +18,6 @@ spec:
     cacheURI: "hostpath://tmp/test"
     minReplicas: 1
     maxReplicas: 3
-    scalingCost: 1
-    scaleToZeroGracePeriod: 60s
     workers:
       - type: "server"
         image: "vllm/vllm-openai:v0.7.1"

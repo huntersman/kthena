@@ -19,14 +19,11 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"time"
-
 	registryv1alpha1 "github.com/volcano-sh/kthena/pkg/apis/workload/v1alpha1"
 	"gomodules.xyz/jsonpatch/v2"
 	admissionv1 "k8s.io/api/admission/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
+	"net/http"
 )
 
 // ModelMutator handles mutation of ModelBooster resources
@@ -85,18 +82,6 @@ func (m *ModelMutator) Handle(w http.ResponseWriter, r *http.Request) {
 // mutateModel applies mutations to the ModelBooster resource
 func (m *ModelMutator) mutateModel(model *registryv1alpha1.ModelBooster) {
 	klog.Infof("Defaulting for ModelBooster %s", model.GetName())
-
-	// Default ScaleToZeroGracePeriod if AutoscalingPolicy is set
-	if model.Spec.AutoscalingPolicy != nil {
-		if model.Spec.Backend.ScaleToZeroGracePeriod == nil {
-			model.Spec.Backend.ScaleToZeroGracePeriod = &metav1.Duration{Duration: 30 * time.Second}
-		}
-
-		if model.Spec.CostExpansionRatePercent == nil {
-			var value int32 = 200
-			model.Spec.CostExpansionRatePercent = &value
-		}
-	}
 }
 
 // createPatch creates a JSON patch between the original and mutated model

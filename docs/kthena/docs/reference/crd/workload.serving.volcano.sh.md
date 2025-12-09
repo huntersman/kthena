@@ -202,7 +202,6 @@ AutoscalingPolicySpec defines the desired state of AutoscalingPolicy.
 
 _Appears in:_
 - [AutoscalingPolicy](#autoscalingpolicy)
-- [ModelBackend](#modelbackend)
 - [ModelBoosterSpec](#modelboosterspec)
 
 | Field | Description | Default | Validation |
@@ -373,7 +372,6 @@ _Appears in:_
 | `maxReplicas` _integer_ | MaxReplicas is the maximum number of replicas for the backend. |  | Maximum: 1e+06 <br />Minimum: 1 <br /> |
 | `scalingCost` _integer_ | ScalingCost is the cost associated with running this backend. |  | Minimum: 0 <br /> |
 | `workers` _[ModelWorker](#modelworker) array_ | Workers is the list of workers associated with this backend. |  | MaxItems: 1000 <br />MinItems: 1 <br /> |
-| `autoscalingPolicy` _[AutoscalingPolicySpec](#autoscalingpolicyspec)_ | AutoscalingPolicy references the autoscaling policy for this backend. |  |  |
 | `schedulerName` _string_ | SchedulerName defines the name of the scheduler used by ModelServing for this backend. |  |  |
 
 
@@ -451,7 +449,6 @@ _Appears in:_
 | `owner` _string_ | Owner is the owner of the model. |  |  |
 | `backend` _[ModelBackend](#modelbackend)_ | Backend is the model backend associated with this model.<br />ModelBackend is the minimum unit of inference instance. It can be vLLM or vLLMDisaggregated. |  |  |
 | `autoscalingPolicy` _[AutoscalingPolicySpec](#autoscalingpolicyspec)_ | AutoscalingPolicy references the autoscaling policy to be used for this model. |  |  |
-| `costExpansionRatePercent` _integer_ | CostExpansionRatePercent is the percentage rate at which the cost expands. |  | Maximum: 1000 <br />Minimum: 0 <br /> |
 | `modelMatch` _[ModelMatch](#modelmatch)_ | ModelMatch defines the predicate used to match LLM inference requests to a given<br />TargetModels. Multiple match conditions are ANDed together, i.e. the match will<br />evaluate to true only if all conditions are satisfied. |  |  |
 
 

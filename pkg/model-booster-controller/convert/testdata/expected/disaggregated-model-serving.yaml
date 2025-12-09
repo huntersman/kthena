@@ -6,7 +6,7 @@ metadata:
     workload.serving.volcano.sh/managed-by: workload.serving.volcano.sh
     workload.serving.volcano.sh/model-name: ds-r1-qwen-7b-pd
     workload.serving.volcano.sh/model-uid: randomUID
-    workload.serving.volcano.sh/revision: 677f548695
+    workload.serving.volcano.sh/revision: 7cf7c9c7dc
   name: ds-r1-qwen-7b-pd-ds-r1-qwen-7b-pd
   namespace: demo
   ownerReferences:
