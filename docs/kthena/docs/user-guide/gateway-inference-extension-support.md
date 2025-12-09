@@ -54,7 +54,7 @@ kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extens
 
 Choose one of the following options based on your gateway implementation:
 
-<Tabs>
+<Tabs groupId="gateway-provider">
 <TabItem value="kthena-router" label="Kthena Router">
 
 Kthena Router natively supports Gateway Inference Extension and does not require the Endpoint Picker Extension. You can directly create an InferencePool resource that selects your Kthena model endpoints:
@@ -98,7 +98,7 @@ helm install kthena-demo \
 
 ### Deploy an Inference Gateway
 
-<Tabs>
+<Tabs groupId="gateway-provider">
 <TabItem value="kthena-router" label="Kthena Router">
 
 Kthena Router natively supports Gateway API and Gateway Inference Extension. You don't need to deploy additional gateway components, but you need to enable the Gateway API and Gateway Inference Extension flags in your Kthena Router deployment.
@@ -274,6 +274,28 @@ kubectl get inferencepool kthena-demo -o yaml
 
 Wait until the gateway is ready and test inference through the gateway:
 
+<Tabs groupId="gateway-provider">
+<TabItem value="kthena-router" label="Kthena Router">
+
+```bash
+# Get the kthena-router IP or hostname
+ROUTER_IP=$(kubectl get service networking-kthena-router -n kthena-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+# If LoadBalancer is not available, use NodePort or port-forward
+# kubectl port-forward -n kthena-system service/kthena-router 80:80
+# Test the default port
+curl http://${ROUTER_IP}:80/v1/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "Qwen2.5-0.5B-Instruct",
+    "prompt": "Write as if you were a critic: San Francisco",
+    "max_tokens": 100,
+    "temperature": 0
+  }'
+```
+
+</TabItem>
+<TabItem value="istio" label="Istio">
+
 ```bash
 # Get the gateway IP address
 IP=$(kubectl get gateway/inference-gateway -o jsonpath='{.status.addresses[0].value}')
@@ -289,6 +311,9 @@ curl -i ${IP}:${PORT}/v1/completions \
     "temperature": 0
   }'
 ```
+
+</TabItem>
+</Tabs>
 
 ## Cleanup
 
