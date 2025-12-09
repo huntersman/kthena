@@ -92,7 +92,7 @@ spec:
                   - containerPort: 8100
                 resources: {}
               - command:
-                  - python
+                  - python3
                   - -m
                   - vllm.entrypoints.openai.api_server
                   - --model
@@ -283,7 +283,7 @@ spec:
                   - containerPort: 8100
                 resources: {}
               - command:
-                  - python
+                  - python3
                   - -m
                   - vllm.entrypoints.openai.api_server
                   - --model

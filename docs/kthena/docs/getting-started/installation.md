@@ -79,18 +79,22 @@ You can customize the installation by providing values:
 helm install kthena oci://ghcr.io/volcano-sh/charts/kthena \
   --namespace kthena-system \
   --create-namespace \
-  --set controller.replicas=2 \
-  --set router.service.type=LoadBalancer
+  --set workload.controllerManager.replicas=2 \
+  --set networking.kthenaRouter.tls.enabled=true
 ```
 
 ### Common Configuration Parameters
 
 | Parameter | Description | Default |
 | :------------------ | :---------------------------- | :-------- |
-| `controller.replicas` | Number of controller replicas | `1` |
-| `router.service.type` | Router service type | `ClusterIP` |
-| `registry.enabled` | Enable model registry | `true` |
-| `autoscaler.enabled` | Enable auto-scaling | `true` |
+| `workload.controllerManager.replicas` | Number of controller manager replicas | `1` |
+| `networking.kthenaRouter.replicas` | Number of router replicas | `1` |
+| `networking.kthenaRouter.tls.enabled` | Enable TLS for the router | `false` |
+| `global.certManagementMode` | Certificate management mode (`auto`, `cert-manager`, `manual`) | `auto` |
+
+### Full Values Reference
+
+For a complete list of all configurable Helm values, see the [Helm Chart Values Reference](../reference/helm-chart-values.md).
 
 ## Verification
 
@@ -114,4 +118,9 @@ Kthena leverages **Volcano** (a high-performance batch system for Kubernetes) to
 If you need gang scheduling capabilities, you can install Volcano by following the official installation guide of [Volcano](https://volcano.sh/en/docs/installation/).
 
 # Kthena CLI
-Kthena provides a CLI tool called `kthena` to manage your Kthena deployments. You can download CLI from the [GitHub release page](https://github.com/volcano-sh/kthena/releases/). Please refer to the [CLI documentation](../reference/cli/kthena.md) for more information.
+
+Kthena includes a command‑line interface (`kthena`) for managing AI inference workloads. You can use it directly to create, inspect, and manage model deployments, templates, autoscaling policies, and other Kthena resources.
+
+- **Download**: Get the latest binary from the [GitHub release page](https://github.com/volcano-sh/kthena/releases/).
+- **Documentation**: See the [CLI reference](../reference/kthena-cli/kthena.md) for a complete command listing.
+- **AI‑powered usage**: The CLI can be integrated with [kubectl‑ai](https://github.com/GoogleCloudPlatform/kubectl‑ai) to generate commands from natural‑language prompts. Refer to the [kubectl‑ai integration guide](../reference/kthena-cli.md#integrating-with-kubectlai) for setup details.

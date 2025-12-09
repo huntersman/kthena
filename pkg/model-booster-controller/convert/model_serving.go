@@ -321,7 +321,7 @@ func mapWorkers(workers []workload.ModelWorker) map[workload.ModelWorkerType]*wo
 // buildCommands constructs the command list for the backend.
 func buildCommands(workerConfig *apiextensionsv1.JSON, modelDownloadPath string,
 	workersMap map[workload.ModelWorkerType]*workload.ModelWorker) ([]string, error) {
-	commands := []string{"python", "-m", "vllm.entrypoints.openai.api_server", "--model", modelDownloadPath}
+	commands := []string{"python3", "-m", "vllm.entrypoints.openai.api_server", "--model", modelDownloadPath}
 	args, err := utils.ConvertVLLMArgsFromJson(workerConfig)
 	commands = append(commands, args...)
 	if workersMap[workload.ModelWorkerTypeServer] != nil && workersMap[workload.ModelWorkerTypeServer].Pods > 1 {
@@ -374,11 +374,17 @@ func buildCacheVolume(backend *workload.ModelBackend) (*corev1.Volume, error) {
 	return nil, fmt.Errorf("not support prefix in CacheURI: %s", backend.CacheURI)
 }
 
+// GetCachePath gets the path from string after "://". For example, for "pvc://my-pvc", it returns "/my-pvc".
 func GetCachePath(path string) string {
 	if path == "" || !strings.Contains(path, URIPrefixSeparator) {
 		return ""
 	}
-	return strings.Split(path, URIPrefixSeparator)[1]
+	s := strings.Split(path, URIPrefixSeparator)[1]
+	s = strings.Trim(s, "/")
+	builder := strings.Builder{}
+	builder.WriteString("/")
+	builder.WriteString(s)
+	return builder.String()
 }
 
 func getVolumeName(backendName string) string {

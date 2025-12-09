@@ -90,7 +90,7 @@ curl -X POST http://<model-route-ip>/v1/chat/completions \
 Use the following command to get the `<model-route-ip>`:
 
 ```bash
-kubectl get svc networking-kthena-router -o jsonpath='{.spec.clusterIP}' -n <your-namespace>
+kubectl get svc kthena-router -o jsonpath='{.spec.clusterIP}' -n <your-namespace>
 ```
 
 This IP can only be used inside the cluster. If you want to chat from outside the cluster, you can use the `EXTERNAL-IP`
@@ -145,7 +145,7 @@ kubectl get modelserving sample -o jsonpath='{.status.conditions}' | jq '.'
 
 **Step 3: Perform Inference**
 
-Before you can perform inference, you need to create `ModelRoute` and `ModelServer`. You can refer to [modelRouter Configuration](../user-guide/prefill-decode-disaggregation/vllm-ascend-mooncake.md#modelrouter-configuration) and [modelServer Configuration](../user-guide/prefill-decode-disaggregation/vllm-ascend-mooncake.md#modelserver-configuration).
+Before you can perform inference, you need to create `ModelRoute` and `ModelServer`. You can refer to [modelRoute Configuration](../user-guide/prefill-decode-disaggregation/vllm-ascend-mooncake.md#3-modelroute-configuration) and [modelServer Configuration](../user-guide/prefill-decode-disaggregation/vllm-ascend-mooncake.md#2-modelserver-configuration).
 
 Then you can use the following command to send a request:
 

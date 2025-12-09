@@ -1,0 +1,1 @@
+refer to the `Integrating with kubectl‑ai` section of [Kthena CLI](../../docs/kthena/docs/reference/kthena-cli.md)

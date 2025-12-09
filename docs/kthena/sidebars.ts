@@ -105,6 +105,11 @@ const sidebars: SidebarsConfig = {
           label: 'Router Access Log Fields',
         },
         {
+          type: 'doc',
+          id: 'reference/helm-chart-values',
+          label: 'Helm Chart Values',
+        },
+        {
           type: 'category',
           label: 'CRD Reference',
           items: [
@@ -120,21 +125,87 @@ const sidebars: SidebarsConfig = {
             },
           ],
         },
-        // TODO: show CLI doc after CLI renaming
-        // {
-        //   type: 'category',
-        //   label: 'Minfer CLI',
-        //   items: [
-        //     { type: 'doc', id: 'reference/cli/minfer', label: 'Minfer' },
-        //     { type: 'doc', id: 'reference/cli/minfer_create', label: 'Create' },
-        //     { type: 'doc', id: 'reference/cli/minfer_get', label: 'Get' },
-        //     {
-        //       type: 'doc',
-        //       id: 'reference/cli/minfer_describe',
-        //       label: 'Describe',
-        //     },
-        //   ],
-        // },
+        {
+          type: 'category',
+          label: 'Kthena CLI',
+          link: {
+            type: 'doc',
+            id: 'reference/kthena-cli',
+          },
+          items: [
+            { type: 'doc', id: 'reference/kthena-cli/kthena', label: 'Kthena' },
+            {
+              type: 'doc',
+              id: 'reference/kthena-cli/kthena_create',
+              label: 'Create',
+            },
+            {
+              type: 'doc',
+              id: 'reference/kthena-cli/kthena_create_manifest',
+              label: 'Create manifest',
+            },
+            {
+              type: 'doc',
+              id: 'reference/kthena-cli/kthena_get',
+              label: 'Get',
+            },
+            {
+              type: 'doc',
+              id: 'reference/kthena-cli/kthena_get_autoscaling-policies',
+              label: 'Get autoscaling-policies',
+            },
+            {
+              type: 'doc',
+              id: 'reference/kthena-cli/kthena_get_autoscaling-policy-bindings',
+              label: 'Get autoscaling-policy-bindings',
+            },
+            {
+              type: 'doc',
+              id: 'reference/kthena-cli/kthena_get_model-boosters',
+              label: 'Get model-boosters',
+            },
+            {
+              type: 'doc',
+              id: 'reference/kthena-cli/kthena_get_model-servings',
+              label: 'Get model-servings',
+            },
+            {
+              type: 'doc',
+              id: 'reference/kthena-cli/kthena_get_template',
+              label: 'Get template',
+            },
+            {
+              type: 'doc',
+              id: 'reference/kthena-cli/kthena_get_templates',
+              label: 'Get templates',
+            },
+            {
+              type: 'doc',
+              id: 'reference/kthena-cli/kthena_describe',
+              label: 'Describe',
+            },
+            {
+              type: 'doc',
+              id: 'reference/kthena-cli/kthena_describe_autoscaling-policy',
+              label: 'Describe autoscaling-policy',
+            },
+            {
+              type: 'doc',
+              id: 'reference/kthena-cli/kthena_describe_model-booster',
+              label: 'Describe model-booster',
+            },
+            {
+              type: 'doc',
+              id: 'reference/kthena-cli/kthena_describe_model-serving',
+              label: 'Describe model-serving',
+            },
+            {
+              type: 'doc',
+              id: 'reference/kthena-cli/kthena_describe_template',
+              label: 'Describe template',
+            },
+          ],
+        },
       ],
     },
   ],

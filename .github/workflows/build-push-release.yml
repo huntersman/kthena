@@ -163,7 +163,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # merge images
+  # merge images: Create Multi-Arch Manifests
   merge_images:
     needs: [ setup, build_images ]
     runs-on: ubuntu-latest
@@ -214,6 +214,77 @@ jobs:
         run: |
           docker buildx imagetools inspect ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ needs.setup.outputs.version }}
 
+  build_cli:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            goos: linux
+            goarch: amd64
+            ext: ""
+          - os: linux
+            arch: arm64
+            goos: linux
+            goarch: arm64
+            ext: ""
+          - os: darwin
+            arch: amd64
+            goos: darwin
+            goarch: amd64
+            ext: ""
+          - os: darwin
+            arch: arm64
+            goos: darwin
+            goarch: arm64
+            ext: ""
+          - os: windows
+            arch: amd64
+            goos: windows
+            goarch: amd64
+            ext: ".exe"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -o kthena${{ matrix.ext }} ./cli/kthena
+
+      - name: Package binary
+        run: |
+          VERSION="${{ needs.setup.outputs.version }}"
+          OS="${{ matrix.os }}"
+          ARCH="${{ matrix.arch }}"
+          BINARY_NAME="kthena${{ matrix.ext }}"
+          ARCHIVE_NAME="kthena-cli-${OS}-${ARCH}"
+          if [[ "${{ matrix.os }}" == "windows" ]]; then
+            zip -j "${ARCHIVE_NAME}.zip" "${BINARY_NAME}"
+            echo "archive_path=${ARCHIVE_NAME}.zip" >> $GITHUB_ENV
+          else
+            tar -czf "${ARCHIVE_NAME}.tar.gz" "${BINARY_NAME}"
+            echo "archive_path=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_ENV
+          fi
+
+      - name: Upload CLI Binary
+        if: ${{ needs.setup.outputs.is_tag == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-binaries-${{ matrix.os }}-${{ matrix.arch }}
+          path: ${{ env.archive_path }}
+          retention-days: 1
+
   push_helm_chart:
     needs: [ setup, merge_images ]
     runs-on: ubuntu-latest
@@ -261,37 +332,62 @@ jobs:
           LOWER_REPO_OWNER=$(echo "$REPO_OWNER" | tr '[:upper:]' '[:lower:]')
           helm push kthena.tgz oci://ghcr.io/$LOWER_REPO_OWNER/charts
 
-      - name: Prepare Release Artifacts
+      - name: Prepare Helm Release Artifacts
         if: needs.setup.outputs.is_tag == 'true'
         run: |
           helm template kthena ./charts/kthena --namespace kthena-system --include-crds > kthena-install.yaml
 
-      - name: Upload Release Artifacts
+      - name: Upload Helm Release Artifacts
         if: needs.setup.outputs.is_tag == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: release-artifacts
+          name: helm-release-artifacts
           path: |
             ./kthena.tgz
             ./kthena-install.yaml
 
   create_github_release:
-    needs: [ setup, push_helm_chart ]
+    needs: [ setup, push_helm_chart, build_cli ]
     if: needs.setup.outputs.is_tag == 'true'
     permissions:
       contents: write
     runs-on: ubuntu-latest
     steps:
-      - name: Download Release Artifacts
+      - name: Download Helm Release Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-artifacts
+          name: helm-release-artifacts
+
+      - name: Download CLI Binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: ./cli-binaries
+          pattern: cli-binaries-*
+          merge-multiple: true
 
       - name: Create Github Release
         uses: softprops/action-gh-release@v2
         with:
           prerelease: ${{ needs.setup.outputs.prerelease }}
+          body: |
+            This release includes the following artifacts:
+
+            - **Helm Chart**: `kthena.tgz` (OCI artifact pushed to GHCR)
+            - **Installation YAML**: `kthena-install.yaml`
+            - **CLI Binaries**: Pre-built binaries for Linux (amd64/arm64), macOS (amd64/arm64), and Windows (amd64)
+
+            ### Documentation
+            
+            - [Installation](https://kthena.volcano.sh/docs/getting-started/installation)
+            - [Quick Start](https://kthena.volcano.sh/docs/getting-started/quick-start)
+            - [Helm Chart Values](https://kthena.volcano.sh/docs/reference/helm-chart-values)
+            - [CLI Reference](https://kthena.volcano.sh/docs/reference/kthena-cli)
+
+            ---
+
+            *Release notes are automatically generated from commits.*
           generate_release_notes: true
           files: |
             ./kthena.tgz
             ./kthena-install.yaml
+            ./cli-binaries/*
