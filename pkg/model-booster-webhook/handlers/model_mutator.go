@@ -19,11 +19,12 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+
 	registryv1alpha1 "github.com/volcano-sh/kthena/pkg/apis/workload/v1alpha1"
 	"gomodules.xyz/jsonpatch/v2"
 	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/klog/v2"
-	"net/http"
 )
 
 // ModelMutator handles mutation of ModelBooster resources

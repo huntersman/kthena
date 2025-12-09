@@ -25,6 +25,7 @@ import (
 	"github.com/volcano-sh/kthena/pkg/model-booster-controller/utils"
 	icUtils "github.com/volcano-sh/kthena/pkg/model-serving-controller/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/v2"
 )
 
 var VLLMKvConnectorType = map[string]networking.KVConnectorType{
