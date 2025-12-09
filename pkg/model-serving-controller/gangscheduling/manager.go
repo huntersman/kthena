@@ -110,7 +110,8 @@ func (m *Manager) managePodGroups(ctx context.Context, mi *workloadv1alpha1.Mode
 
 	// Clean up excess PodGroups
 	// As insurance
-	return m.cleanupExcessPodGroups(ctx, mi, existingPodGroups, expectedReplicas)
+	// return m.cleanupExcessPodGroups(ctx, mi, existingPodGroups, expectedReplicas)
+	return nil
 }
 
 // createPodGroup creates a PodGroup for group-level gang scheduling
@@ -375,17 +376,29 @@ func neededHandledPodGroupNameList(expectedReplicas int, mi *workloadv1alpha1.Mo
 	// Deletion of PodGroups is handled when ServingGroups are deleted.
 	podGroupNameListlength := max(expectedReplicas, len(servingGroupNameList))
 
+	maxIndex := -1
+	validatCount := 0
 	nameList := make([]string, 0, podGroupNameListlength)
 	for _, group := range servingGroupNameList {
 		_, index := utils.GetParentNameAndOrdinal(group.Name)
-		if index > podGroupNameListlength-1 {
+		if index >= 0 {
 			nameList = append(nameList, group.Name)
-			podGroupNameListlength = podGroupNameListlength - 1
+			validatCount++
+			if index > maxIndex {
+				maxIndex = index
+			}
 		}
 	}
 
-	for i := 0; i < podGroupNameListlength; i++ {
-		nameList = append(nameList, utils.GenerateServingGroupName(mi.GetName(), i))
+	toCreate := expectedReplicas - validatCount
+	// Scale down. After the deletion of the servingGroup is completed, proceed to delete the PodGroup.
+	if toCreate <= 0 {
+		return nameList
+	}
+
+	for i := 0; i < toCreate; i++ {
+		newIndex := maxIndex + 1 + i
+		nameList = append(nameList, utils.GenerateServingGroupName(mi.GetName(), newIndex))
 	}
 	return nameList
 }
@@ -397,16 +410,27 @@ func neededHandledPodGroupNameList(expectedReplicas int, mi *workloadv1alpha1.Mo
 func needHandledRoleNameList(expectedReplicas int, existRoleList []datastore.Role, roleName string) []string {
 	scaleUpRoleNameList := make([]string, 0, expectedReplicas)
 
+	maxIndex := -1
+	validaCount := 0
 	for _, role := range existRoleList {
 		_, index := utils.GetParentNameAndOrdinal(role.Name)
-		if index > expectedReplicas-1 {
+		if index >= 0 {
+			validaCount++
 			scaleUpRoleNameList = append(scaleUpRoleNameList, role.Name)
-			expectedReplicas = expectedReplicas - 1
+			if index > maxIndex {
+				maxIndex = index
+			}
 		}
 	}
 
-	for i := 0; i < expectedReplicas; i++ {
-		scaleUpRoleNameList = append(scaleUpRoleNameList, utils.GenerateRoleID(roleName, i))
+	toCreate := expectedReplicas - validaCount
+	if toCreate <= 0 {
+		return scaleUpRoleNameList
+	}
+
+	for i := 0; i < toCreate; i++ {
+		newIndex := maxIndex + 1 + i
+		scaleUpRoleNameList = append(scaleUpRoleNameList, utils.GenerateRoleID(roleName, newIndex))
 	}
 	return scaleUpRoleNameList
 }
