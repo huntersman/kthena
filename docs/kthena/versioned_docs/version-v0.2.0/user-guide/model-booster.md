@@ -92,7 +92,7 @@ Kthena provides two approaches for deploying LLM inference workloads: the **Mode
 
 ## Examples of ModelBooster CR
 
-You can find examples of model CR [here](https://github.com/matrixinfer-ai/kthena/tree/main/examples/model-booster)
+You can find examples of model CR [here](https://github.com/volcano-sh/kthena/tree/main/examples/model-booster)
 
 ## Advanced features
 

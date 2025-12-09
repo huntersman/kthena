@@ -88,43 +88,43 @@ By adding Kthena as a custom tool, you enable kubectl‑ai to perform advanced A
         Core subcommands and usage patterns:
       
         ## Template Management
-          - `kthena get templates`: List all available model deployment templates
-          - `kthena describe template <template-name>`: Show detailed template content and parameters
-          - `kthena get template <template-name> -o yaml`: Get template in YAML format
+        - `kthena get templates`: List all available model deployment templates
+        - `kthena describe template <template-name>`: Show detailed template content and parameters
+        - `kthena get template <template-name> -o yaml`: Get template in YAML format
       
         ## Creating Model Deployments
-          - `kthena create manifest --template <template> --name <name>`: Create and deploy a model from template
-          - `kthena create manifest --template <template> --name <name> --dry-run`: Preview template rendering without applying
-          - `kthena create manifest --template <template> --values-file values.yaml`: Create with custom values from file
-          - `kthena create manifest --template <template> --name <name> --set key1=value1,key2=value2`: Set template values directly
+        - `kthena create manifest --template <template> --name <name>`: Create and deploy a model from template
+        - `kthena create manifest --template <template> --name <name> --dry-run`: Preview template rendering without applying
+        - `kthena create manifest --template <template> --values-file values.yaml`: Create with custom values from file
+        - `kthena create manifest --template <template> --name <name> --set key1=value1,key2=value2`: Set template values directly
       
         ## Resource Management
-          - `kthena get model-boosters`: List registered models (requires Kubernetes connection)
-          - `kthena get model-servings`: List model serving workloads (requires Kubernetes connection)
-          - `kthena get autoscaling-policies`: List autoscaling policies
-          - `kthena describe model-booster <name>`: Show detailed model information
-          - `kthena describe model-serving <name>`: Show detailed serving workload information
+        - `kthena get model-boosters`: List registered models (requires Kubernetes connection)
+        - `kthena get model-servings`: List model serving workloads (requires Kubernetes connection)
+        - `kthena get autoscaling-policies`: List autoscaling policies
+        - `kthena describe model-booster <name>`: Show detailed model information
+        - `kthena describe model-serving <name>`: Show detailed serving workload information
       
         ## Common Templates
         Available templates include:
-          - deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
-          - deepseek-ai/DeepSeek-R1-Distill-Qwen-32B
-          - Qwen/Qwen3-8B
-          - Qwen/Qwen3-32B
+        - deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+        - deepseek-ai/DeepSeek-R1-Distill-Qwen-32B
+        - Qwen/Qwen3-8B
+        - Qwen/Qwen3-32B
       
         ## Key Parameters for create manifest
-          - `--template`: Template name (required)
-          - `--name`: Name for the inference workload
-          - `--namespace`: Kubernetes namespace (default: default)
-          - `--dry-run`: Preview without applying
-          - `--set`: Set template values (key=value pairs)
-          - `--values-file`: YAML file with template values
+        - `--template`: Template name (required)
+        - `--name`: Name for the inference workload
+        - `--namespace`: Kubernetes namespace (default: default)
+        - `--dry-run`: Preview without applying
+        - `--set`: Set template values (key=value pairs)
+        - `--values-file`: YAML file with template values
       
         Example workflow:
-          1. `kthena get templates` - Browse available models
-          2. `kthena describe template deepseek-ai/DeepSeek-R1-Distill-Qwen-32B` - View template details
-          3. `kthena create manifest --template deepseek-ai/DeepSeek-R1-Distill-Qwen-32B --name my-deepseek --dry-run` - Preview
-          4. `kthena create manifest --template deepseek-ai/DeepSeek-R1-Distill-Qwen-32B --name my-deepseek` - Deploy
+        1. `kthena get templates` - Browse available models
+        2. `kthena describe template deepseek-ai/DeepSeek-R1-Distill-Qwen-32B` - View template details
+        3. `kthena create manifest --template deepseek-ai/DeepSeek-R1-Distill-Qwen-32B --name my-deepseek --dry-run` - Preview
+        4. `kthena create manifest --template deepseek-ai/DeepSeek-R1-Distill-Qwen-32B --name my-deepseek` - Deploy
     ```
     </details>
 

@@ -67,7 +67,7 @@ To test this, you can set a low limit (e.g., `inputTokensPerUnit: 10`) and send 
 
 ```bash
 # 1. Apply the ModelRoute yaml above
-kubectl apply -f https://github.com/volcano-sh/kthena/blob/main/examples/kthena-router/ModelRouteWithRateLimit.yaml
+kubectl apply -f https://raw.githubusercontent.com/volcano-sh/kthena/main/examples/kthena-router/ModelRouteWithRateLimit.yaml
 
 # 2. Scale down the replicas of the router to 1 to demonstrate local rate limiting
 kubectl scale deployment networking-kthena-router -n kthena-system --replicas=1

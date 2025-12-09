@@ -70,7 +70,7 @@ For a detailed comparison of the ModelBooster approach's advantages, automatical
 Deploy the [ModelBooster configuration](../../assets/examples/model-booster/prefill-decode-disaggregation.yaml) for prefill-decode disaggregated inference:
 
 ```sh
-kubectl apply -f examples/model-booster/prefill-decode-disaggregation.yaml
+kubectl apply -f https://raw.githubusercontent.com/volcano-sh/kthena/main/examples/model-booster/prefill-decode-disaggregation.yaml
 ```
 
 This configuration includes:
