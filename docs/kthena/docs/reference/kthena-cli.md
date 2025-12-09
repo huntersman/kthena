@@ -26,11 +26,7 @@ Each subcommand supports additional resource‑specific operations. For a comple
 
 ### Installation
 
-Download the latest binary from the [releases page](https://github.com/volcano-sh/kthena/releases) or build from source:
-
-```bash
-go install github.com/volcano-sh/kthena/cli/kthena@latest
-```
+To install the Kthena CLI, see the [Installation Guide](../getting-started/installation.md#kthena-cli).
 
 ### Quick Examples
 
@@ -69,8 +65,8 @@ By adding Kthena as a custom tool, you enable kubectl‑ai to perform advanced A
 1. **Install kubectl‑ai**  
    Follow the [official installation guide](https://github.com/GoogleCloudPlatform/kubectl‑ai#installation).
 
-2. **Install Kthena CLI**  
-   As described in the [Installation](#installation) section above.
+2. **Install Kthena CLI**
+   See the [Installation Guide](../getting-started/installation.md#kthena-cli).
 
 3. **Place the Kthena tool configuration**  
    By default, kubectl‑ai looks for tool configurations in `~/.config/kubectl‑ai/tools.yaml`. Copy the provided [`tools.yaml`](../../../../cli/kubectl-ai/tools.yaml) to that location:
