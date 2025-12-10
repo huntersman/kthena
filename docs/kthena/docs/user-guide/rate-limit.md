@@ -70,10 +70,10 @@ To test this, you can set a low limit (e.g., `inputTokensPerUnit: 10`) and send 
 kubectl apply -f https://raw.githubusercontent.com/volcano-sh/kthena/main/examples/kthena-router/ModelRouteWithRateLimit.yaml
 
 # 2. Scale down the replicas of the router to 1 to demonstrate local rate limiting
-kubectl scale deployment networking-kthena-router -n kthena-system --replicas=1
+kubectl scale deployment kthena-router -n kthena-system --replicas=1
 
 # 3. Get public ip of the router pod
-export ROUTER_IP=$(kubectl get svc networking-kthena-router -n kthena-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+export ROUTER_IP=$(kubectl get svc kthena-router -n kthena-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 # 4. Request router three times, the final request will be rejected
 export MODEL="deepseek-r1-with-rate-limit"
@@ -141,10 +141,10 @@ kubectl apply -f https://github.com/volcano-sh/kthena/blob/main/examples/redis/r
 kubectl apply -f https://github.com/volcano-sh/kthena/blob/main/examples/kthena-router/ModelRouteWithGlobalRateLimit.yaml
 
 # 3. Scale up the replicas of the router to 3 to demonstrate global rate limiting
-kubectl scale deployment networking-kthena-router -n kthena-system --replicas=3
+kubectl scale deployment kthena-router -n kthena-system --replicas=3
 
 # 4. Get public ip of the router pod
-export ROUTER_IP=$(kubectl get svc networking-kthena-router -n kthena-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+export ROUTER_IP=$(kubectl get svc kthena-router -n kthena-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 # 5. Request router three times, the final request will be rejected
 export MODEL="deepseek-r1-with-global-rate-limit"
