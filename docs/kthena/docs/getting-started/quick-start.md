@@ -94,7 +94,7 @@ kubectl get svc kthena-router -o jsonpath='{.spec.clusterIP}' -n <your-namespace
 ```
 
 This IP can only be used inside the cluster. If you want to chat from outside the cluster, you can use the `EXTERNAL-IP`
-of `networking-kthena-router` after you bind it.
+of `kthena-router` after you bind it.
 
 ## ModelServing
 

@@ -279,7 +279,7 @@ Wait until the gateway is ready and test inference through the gateway:
 
 ```bash
 # Get the kthena-router IP or hostname
-ROUTER_IP=$(kubectl get service networking-kthena-router -n kthena-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+ROUTER_IP=$(kubectl get service kthena-router -n kthena-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 # If LoadBalancer is not available, use NodePort or port-forward
 # kubectl port-forward -n kthena-system service/kthena-router 80:80
 # Test the default port
